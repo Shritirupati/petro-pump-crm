@@ -365,11 +365,13 @@ function pageCustomer(id) {
   const entries = sortEntries(db.entriesFor(c.id).filter((e) => e.date <= asOf));
   const limit = Number(c.creditLimit) || 0;
 
+  const rowInterest = interestByEntry(sum);
   let bal = 0;
   const ledgerRows = entries.map((e) => {
     if (e.type === TYPES.UDHAR) bal += Number(e.amount);
     if (e.type === TYPES.JAMA) bal -= Number(e.amount);
     const isDebit = e.type === TYPES.UDHAR;
+    const ri = rowInterest.get(e.id);
     return `<tr>
       <td>${fmtDate(e.date)}</td>
       <td><span class="badge ${e.type}">${TYPE_LABEL[e.type]}</span></td>
@@ -377,6 +379,8 @@ function pageCustomer(id) {
       <td class="num text-danger">${isDebit ? money(e.amount) : ''}</td>
       <td class="num text-ok">${!isDebit ? money(e.amount) : ''}</td>
       <td class="num"><b>${money(bal)}</b></td>
+      <td class="num muted">${ri?.days ?? ''}</td>
+      <td class="num ${ri && ri.value < 0 ? 'text-ok' : 'text-danger'}">${ri && ri.value ? (ri.value < 0 ? '− ' : '+ ') + money(Math.abs(ri.value)) : ''}</td>
       <td class="no-print"><button class="icon-btn" title="Badlein" data-edit="${e.id}">✎</button><button class="icon-btn" title="Delete" data-del="${e.id}">🗑</button></td>
     </tr>`;
   }).join('');
@@ -423,7 +427,7 @@ function pageCustomer(id) {
     </div>
 
     <div class="cards">
-      <div class="card"><div class="label">Udhar baaki</div><div class="value">${money(sum.principalDue)}</div>${sum.advance ? `<div class="small text-ok">Advance ${money(sum.advance)}</div>` : ''}</div>
+      <div class="card"><div class="label">Mool baaki (udhar − jama)</div><div class="value">${money(sum.principalDue)}</div>${sum.advance ? `<div class="small text-ok">Advance ${money(sum.advance)}</div>` : ''}</div>
       <div class="card warn"><div class="label">Byaaj baaki</div><div class="value">${money(sum.interestDue)}</div>${sum.interestPaid || sum.interestWaived ? `<div class="small muted">Bana ${money(sum.interestAccrued)} · jama ${money(sum.interestPaid)} · maaf ${money(sum.interestWaived)}</div>` : ''}</div>
       <div class="card danger"><div class="label">Kul baaki</div><div class="value">${money(sum.totalDue)}</div></div>
       <div class="card"><div class="label">Sabse purana baaki udhar</div><div class="value">${sum.oldestPendingDate ? `${sum.oldestPendingDays} din` : '—'}</div>${sum.oldestPendingDate ? `<div class="small muted">${fmtDate(sum.oldestPendingDate)} se</div>` : ''}</div>
@@ -441,10 +445,11 @@ function pageCustomer(id) {
         </div>
       </div>
       ${customerTab === 'ledger' ? (entries.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>Tareekh</th><th>Entry</th><th>Vivran</th><th class="num">Udhar (+)</th><th class="num">Jama (−)</th><th class="num">Udhar baaki</th><th class="no-print"></th></tr></thead>
+        <thead><tr><th>Tareekh</th><th>Entry</th><th>Vivran</th><th class="num">Udhar (+)</th><th class="num">Jama (−)</th><th class="num">Mool baaki</th><th class="num">Din</th><th class="num">Byaaj</th><th class="no-print"></th></tr></thead>
         <tbody>${ledgerRows}</tbody>
-        <tfoot><tr><td colspan="3">Kul</td><td class="num">${money(sum.totalUdhar)}</td><td class="num">${money(sum.totalJama)}</td><td class="num">${money(sum.principalDue)}</td><td class="no-print"></td></tr></tfoot>
-        </table></div>` : '<div class="empty">Abhi koi entry nahi. "+ Udhar" ya "+ Jama" dabaiye.</div>')
+        <tfoot><tr><td colspan="3">Kul</td><td class="num">${money(sum.totalUdhar)}</td><td class="num">${money(sum.totalJama)}</td><td class="num">${money(sum.principalDue)}</td><td></td><td class="num">${money(sum.interestDue)}</td><td class="no-print"></td></tr></tfoot>
+        </table></div>
+        ${summaryBox(sum, asOf)}` : '<div class="empty">Abhi koi entry nahi. "+ Udhar" ya "+ Jama" dabaiye.</div>')
       : sum.method === METHODS.KHATA ? khataHtml(sum, terms, asOf)
       : (sum.lots.length ? `<div class="panel-body small muted">Har udhar par ${esc(terms.graceDays)} din ke baad ${esc(terms.ratePerMonth)}% mahina (simple) byaaj lagta hai. Jama paisa sabse purane udhar mein adjust hota hai, aur jitna hissa chukaya gaya uska byaaj usi din ruk jaata hai.</div>
         <div class="table-wrap"><table>
@@ -455,7 +460,8 @@ function pageCustomer(id) {
           ${sum.interestPaid ? `<tr><td colspan="5">Byaaj jama</td><td class="num">− ${money(sum.interestPaid)}</td></tr>` : ''}
           ${sum.interestWaived ? `<tr><td colspan="5">Byaaj maaf</td><td class="num">− ${money(sum.interestWaived)}</td></tr>` : ''}
           <tr><td colspan="5">Byaaj baaki</td><td class="num">${money(sum.interestDue)}</td></tr>
-        </tfoot></table></div>` : '<div class="empty">Koi udhar nahi.</div>')}
+        </tfoot></table></div>
+        ${summaryBox(sum, asOf)}` : '<div class="empty">Koi udhar nahi.</div>')}
     </div>
     ${c.notes ? `<div class="panel"><div class="panel-body"><b>Note:</b> ${esc(c.notes)}</div></div>` : ''}`;
 
@@ -497,7 +503,6 @@ function khataHtml(sum, terms, asOf) {
         <tfoot><tr><td>Kul</td><td class="vivran"></td><td class="num">${money(total)}</td><td></td><td class="num">${money(interest)}</td></tr></tfoot>
       </table></div>` : `<div class="empty">${empty}</div>`}
     </div>`;
-  const line = (label, value, cls = '') => `<tr class="${cls}"><td>${label}</td><td class="num">${value}</td></tr>`;
   return `
     <div class="panel-body small muted">Bank CC ki tarah: har udhar par uski tareekh se ${fmtDate(asOf)} tak byaaj judta hai, aur har jama par uski tareekh se ${fmtDate(asOf)} tak byaaj ghatta hai.
       Byaaj = amount × ${esc(rate)}% ÷ 30 × din.</div>
@@ -505,20 +510,52 @@ function khataHtml(sum, terms, asOf) {
       ${table('Udhar (naam) aur uska byaaj', 'text-danger', sum.udharRows, sum.totalUdhar, sum.udharInterest, 'Koi udhar nahi')}
       ${table('Jama aur uska byaaj', 'text-ok', sum.jamaRows, sum.totalJama, sum.jamaInterest, 'Koi jama nahi')}
     </div>
-    <div class="khata-final">
-      <h3>Final hisaab (${fmtDate(asOf)} tak)</h3>
-      <table><tbody>
-        ${line('Kul udhar', money(sum.totalUdhar))}
-        ${line('+ Udhar par byaaj', money(sum.udharInterest))}
-        ${line('Udhar byaaj sahit', money(sum.totalUdhar + sum.udharInterest), 'subtotal')}
-        ${line('− Kul jama', money(sum.totalJama))}
-        ${line('− Jama par byaaj', money(sum.jamaInterest))}
-        ${line('Jama byaaj sahit', money(sum.totalJama + sum.jamaInterest), 'subtotal')}
-        ${sum.interestPaid ? line('− Byaaj ka paisa jama', money(sum.interestPaid)) : ''}
-        ${sum.interestWaived ? line('− Byaaj maaf', money(sum.interestWaived)) : ''}
-        ${line('Final baaki', money(sum.totalDue), 'grand')}
+    ${summaryBox(sum, asOf)}`;
+}
+
+// Per-entry interest for the ledger: + on udhar, − on jama / byaaj jama / maaf.
+function interestByEntry(sum) {
+  const map = new Map();
+  if (sum.method === METHODS.KHATA) {
+    for (const r of sum.udharRows) map.set(r.entry.id, { days: r.days, value: r.interest });
+    for (const r of sum.jamaRows) map.set(r.entry.id, { days: r.days, value: -r.interest });
+    for (const r of sum.byaajRows) map.set(r.entry.id, { value: -r.amount });
+  } else {
+    for (const l of sum.lots) map.set(l.id, { days: l.remaining ? l.pendingDays : '', value: l.interest });
+  }
+  for (const e of db.entries) {
+    if ((e.type === TYPES.BYAAJ_JAMA || e.type === TYPES.BYAAJ_MAAF) && !map.has(e.id)) map.set(e.id, { value: -Number(e.amount) });
+  }
+  return map;
+}
+
+// Mool (principal) + byaaj = kul baaki, shown under both tabs.
+function summaryBox(sum, asOf) {
+  const line = (label, value, cls = '') => `<tr class="${cls}"><td>${label}</td><td class="num">${value}</td></tr>`;
+  const interestLines = sum.method === METHODS.KHATA
+    ? line('Udhar par byaaj', `+ ${money(sum.udharInterest)}`) + line('Jama par byaaj', `− ${money(sum.jamaInterest)}`)
+    : line('Kul byaaj bana', `+ ${money(sum.interestAccrued)}`);
+  return `
+    <div class="summary-box">
+      <h3>Poora hisaab (${fmtDate(asOf)} tak)</h3>
+      <div class="summary-grid">
+        <table><tbody>
+          <tr class="head"><td colspan="2">Mool amount (asal)</td></tr>
+          ${line('Kul udhar', `+ ${money(sum.totalUdhar)}`)}
+          ${line('Kul jama', `− ${money(sum.totalJama)}`)}
+          ${line('Mool baaki', money(sum.principalDue), 'subtotal')}
+        </tbody></table>
+        <table><tbody>
+          <tr class="head"><td colspan="2">Byaaj</td></tr>
+          ${interestLines}
+          ${sum.interestPaid ? line('Byaaj ka paisa jama', `− ${money(sum.interestPaid)}`) : ''}
+          ${sum.interestWaived ? line('Byaaj maaf', `− ${money(sum.interestWaived)}`) : ''}
+          ${line('Byaaj baaki', money(sum.interestDue), 'subtotal')}
+        </tbody></table>
+      </div>
+      <table class="summary-total"><tbody>
+        ${line(`Kul baaki = mool ${money(sum.principalDue)} + byaaj ${money(sum.interestDue)}`, money(sum.totalDue), 'grand')}
       </tbody></table>
-      <p class="small muted">Isme udhar baaki ${money(sum.principalDue)} aur shudh byaaj ${money(sum.interestDue)} hai.</p>
     </div>`;
 }
 

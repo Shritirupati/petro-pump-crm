@@ -180,3 +180,18 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 24
 @media print {
   .khata-grid { grid-template-columns: 1fr 1fr; }
 }
+
+.summary-box { border-top: 1px solid var(--border); padding: 14px; }
+.summary-box h3 { font-size: 1rem; margin-bottom: 8px; }
+.summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+.summary-box td { padding: 6px 4px; }
+.summary-box tr.head td { font-weight: 700; color: var(--muted); text-transform: uppercase; font-size: .78rem; letter-spacing: .03em; }
+.summary-box tr.subtotal td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: 0; }
+.summary-total { margin-top: 8px; }
+.summary-total tr.grand td { font-size: 1.15rem; font-weight: 800; color: var(--danger); border-top: 2px solid var(--text); border-bottom: 0; white-space: normal; }
+@media (max-width: 640px) {
+  .summary-grid { grid-template-columns: 1fr; }
+}
+@media print {
+  .summary-grid { grid-template-columns: 1fr 1fr; }
+}
