@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="hi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Petrol Pump CRM</title>
+  <meta name="theme-color" content="#0f5132">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar no-print">
+    <a href="#/" class="brand"><span class="logo" aria-hidden="true">⛽</span> <span id="pump-name">Petrol Pump CRM</span></a>
+    <nav>
+      <a href="#/" data-nav="dashboard">Dashboard</a>
+      <a href="#/customers" data-nav="customers">Customers</a>
+      <a href="#/settings" data-nav="settings">Settings</a>
+    </nav>
+  </header>
+
+  <main id="app" tabindex="-1"></main>
+
+  <dialog id="modal">
+    <form method="dialog" id="modal-form" novalidate>
+      <header class="modal-head">
+        <h2 id="modal-title"></h2>
+        <button type="button" class="icon-btn" data-close aria-label="Band karein">✕</button>
+      </header>
+      <div id="modal-body"></div>
+      <footer class="modal-foot">
+        <button type="button" class="btn ghost" data-close>Cancel</button>
+        <button type="submit" class="btn primary" id="modal-submit">Save</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

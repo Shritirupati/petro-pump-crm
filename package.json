@@ -1,0 +1,11 @@
+{
+  "name": "petro-pump-crm",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Petrol pump CRM: customers, udhar (credit) tracking and interest calculation",
+  "scripts": {
+    "start": "npx --yes serve -l 8080 .",
+    "test": "node --test tests/*.test.js"
+  }
+}
