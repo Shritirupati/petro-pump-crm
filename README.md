@@ -17,18 +17,30 @@ udhar aur jama ki entry, aur byaaj (interest) ka apne-aap calculation.
 
 ## Byaaj ke niyam
 
-Settings mein badal sakte hain (aur har customer ke liye alag bhi):
+Settings mein do tareeke hain (default: **Bank CC / khata jaisa**):
 
-| Niyam | Default |
-|---|---|
-| Byaaj rate | 2% per mahina (simple interest, 1 mahina = 30 din) |
-| Byaaj-free din | 30 din (har udhar ki tareekh se) |
-| Jama paisa | Sabse purane udhar mein pehle adjust hota hai (FIFO) |
+### 1. Bank CC / khata jaisa (naam-jama byaaj), default
 
-Udaharan: 1 Jan ko ₹10,000 udhar, 1 April tak nahi chukaya = 90 din.
-Pehle 30 din free, baaki 60 din ka byaaj = 10,000 × 2% ÷ 30 × 60 = **₹400**.
+- Har **udhar** par uski tareekh se aaj (ya chuni hui tareekh) tak byaaj **judta** hai.
+- Har **jama** par uski tareekh se aaj tak byaaj **ghatta** hai.
+- Final baaki = udhar + udhar ka byaaj − jama − jama ka byaaj − byaaj jama/maaf.
 
-Agar beech mein kuch paisa jama hua, to jitna hissa chukaya gaya uska byaaj usi din ruk jaata hai.
+Udaharan (2% mahina, 07-10-2026 tak):
+
+| | Amount | Din | Byaaj |
+|---|---|---|---|
+| Udhar 07-09-2026 | ₹50,000 | 30 | ₹1,000 |
+| Jama 17-09-2026 | ₹5,000 | 20 | ₹66.67 |
+| **Final baaki** | 51,000 − 5,066.67 | | **₹45,933.33** |
+
+Byaaj = amount × rate% ÷ 30 × din. Ye bank ke CC account ke daily balance par byaaj jaisa hi nikalta hai.
+
+### 2. Free din ke baad (FIFO)
+
+- Har udhar par pehle 30 din (badal sakte hain) byaaj nahi, uske baad 2% mahina.
+- Jama paisa sabse purane udhar mein pehle adjust hota hai.
+
+Rate aur din har customer ke liye alag bhi rakh sakte hain.
 
 ## Chalana
 
