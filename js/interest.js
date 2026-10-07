@@ -129,3 +129,61 @@ export function computeLedger(entries, { ratePerMonth, graceDays, asOf }) {
     oldestPendingDays: oldestPendingDate ? daysBetween(oldestPendingDate, asOf) : 0,
   };
 }
+
+// Bank CC / bahi-khata style (naam-jama byaaj):
+// every udhar earns interest from its own date until `asOf`, and every jama
+// earns the customer interest from its own date until `asOf`. Net interest is
+// udhar interest minus jama interest. Same result as daily interest on the
+// running balance, but every entry's share is visible.
+export function computeKhata(entries, { ratePerMonth, asOf }) {
+  const dailyRate = (Number(ratePerMonth) || 0) / 100 / 30;
+  const udharRows = [];
+  const jamaRows = [];
+  const byaajRows = [];
+
+  for (const e of sortEntries(entries.filter((x) => x.date <= asOf))) {
+    const amount = Number(e.amount) || 0;
+    const days = daysBetween(e.date, asOf);
+    const row = { entry: e, date: e.date, amount, days, interest: round2(amount * dailyRate * days) };
+    if (e.type === TYPES.UDHAR) udharRows.push(row);
+    else if (e.type === TYPES.JAMA) jamaRows.push(row);
+    else byaajRows.push({ ...row, days: 0, interest: 0 });
+  }
+
+  const sum = (rows, k) => round2(rows.reduce((s, r) => s + r[k], 0));
+  const totalUdhar = sum(udharRows, 'amount');
+  const udharInterest = sum(udharRows, 'interest');
+  const totalJama = sum(jamaRows, 'amount');
+  const jamaInterest = sum(jamaRows, 'interest');
+  const interestPaid = sum(byaajRows.filter((r) => r.entry.type === TYPES.BYAAJ_JAMA), 'amount');
+  const interestWaived = sum(byaajRows.filter((r) => r.entry.type === TYPES.BYAAJ_MAAF), 'amount');
+  const interestAccrued = round2(udharInterest - jamaInterest);
+  const principalDue = round2(totalUdhar - totalJama);
+  const interestDue = round2(interestAccrued - interestPaid - interestWaived);
+
+  return {
+    udharRows, jamaRows, byaajRows,
+    totalUdhar, udharInterest, totalJama, jamaInterest,
+    interestAccrued, interestPaid, interestWaived,
+    principalDue, interestDue,
+    totalDue: round2(principalDue + interestDue),
+  };
+}
+
+export const METHODS = { KHATA: 'khata', FIFO: 'fifo' };
+
+// One summary shape for the UI, whichever interest method is selected.
+export function computeAccount(entries, { method = METHODS.KHATA, ratePerMonth, graceDays, asOf }) {
+  if (method === METHODS.FIFO) {
+    return { method, ...computeLedger(entries, { ratePerMonth, graceDays, asOf }) };
+  }
+  const khata = computeKhata(entries, { ratePerMonth, asOf });
+  const age = computeLedger(entries, { ratePerMonth: 0, graceDays: 0, asOf });
+  return {
+    method: METHODS.KHATA,
+    ...khata,
+    advance: round2(Math.max(0, -khata.principalDue)),
+    oldestPendingDate: age.oldestPendingDate,
+    oldestPendingDays: age.oldestPendingDays,
+  };
+}

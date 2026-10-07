@@ -12,6 +12,7 @@ function defaults() {
       pumpName: 'Mera Petrol Pump',
       address: '',
       phone: '',
+      interestMethod: 'khata',
       ratePerMonth: 2,
       graceDays: 30,
       lastRates: { Petrol: 0, Diesel: 0, CNG: 0 },

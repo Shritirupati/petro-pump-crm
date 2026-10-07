@@ -157,3 +157,26 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 24
   .card .value { font-size: 1.1rem; }
   th { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+.khata-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 1px solid var(--border); }
+.khata-col { min-width: 0; }
+.khata-col + .khata-col { border-left: 1px solid var(--border); }
+.khata-col h3 { font-size: 1rem; padding: 12px 14px 8px; }
+.khata-col th, .khata-col td { padding: 7px 10px; }
+.khata-final { border-top: 1px solid var(--border); padding: 14px; max-width: 520px; margin-left: auto; }
+.khata-final h3 { font-size: 1rem; margin-bottom: 8px; }
+.khata-final td { padding: 6px 4px; }
+.khata-final tr.subtotal td { font-weight: 600; border-bottom: 2px solid var(--border); }
+.khata-final tr.grand td { font-size: 1.15rem; font-weight: 800; color: var(--danger); border-bottom: 0; border-top: 2px solid var(--text); }
+
+@media (max-width: 640px) {
+  .khata-col .vivran { display: none; }
+}
+@media (max-width: 900px) {
+  .khata-grid { grid-template-columns: 1fr; }
+  .khata-col + .khata-col { border-left: 0; border-top: 1px solid var(--border); }
+  .khata-final { max-width: none; }
+}
+@media print {
+  .khata-grid { grid-template-columns: 1fr 1fr; }
+}

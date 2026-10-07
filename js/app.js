@@ -1,5 +1,5 @@
 import { db, FUELS, PAY_MODES } from './store.js';
-import { computeLedger, sortEntries, daysBetween, round2, TYPES } from './interest.js';
+import { computeAccount, sortEntries, round2, TYPES, METHODS } from './interest.js';
 
 const app = document.getElementById('app');
 const modal = document.getElementById('modal');
@@ -39,11 +39,18 @@ function termsFor(c) {
   return {
     ratePerMonth: c.ratePerMonth !== '' && c.ratePerMonth != null ? Number(c.ratePerMonth) : Number(s.ratePerMonth),
     graceDays: c.graceDays !== '' && c.graceDays != null ? Number(c.graceDays) : Number(s.graceDays),
+    method: s.interestMethod || METHODS.KHATA,
   };
 }
 
 function summaryFor(c, asOf = today()) {
-  return computeLedger(db.entriesFor(c.id), { ...termsFor(c), asOf });
+  return computeAccount(db.entriesFor(c.id), { ...termsFor(c), asOf });
+}
+
+function termsText(t) {
+  return t.method === METHODS.FIFO
+    ? `Byaaj ${t.ratePerMonth}% mahina · pehle ${t.graceDays} din free`
+    : `Byaaj ${t.ratePerMonth}% mahina · CC khata tareeka`;
 }
 
 function ageBadge(days, grace) {
@@ -122,7 +129,7 @@ function customerForm(c = {}) {
       <div class="grid3">
         <div class="field"><label for="f-limit">Credit limit (₹)</label><input id="f-limit" name="creditLimit" type="number" min="0" step="1" value="${esc(c.creditLimit)}" placeholder="Koi limit nahi"></div>
         <div class="field"><label for="f-rate">Byaaj % / mahina</label><input id="f-rate" name="ratePerMonth" type="number" min="0" step="0.01" value="${esc(c.ratePerMonth)}" placeholder="${esc(s.ratePerMonth)} (default)"></div>
-        <div class="field"><label for="f-grace">Byaaj-free din</label><input id="f-grace" name="graceDays" type="number" min="0" step="1" value="${esc(c.graceDays)}" placeholder="${esc(s.graceDays)} (default)"></div>
+        <div class="field"><label for="f-grace">Overdue / free din</label><input id="f-grace" name="graceDays" type="number" min="0" step="1" value="${esc(c.graceDays)}" placeholder="${esc(s.graceDays)} (default)"></div>
       </div>
       <p class="hint">Byaaj ka rate aur din khaali chhodne par Settings wale default lagenge.</p>
       <div class="field"><label for="f-notes">Note</label><textarea id="f-notes" name="notes" rows="2">${esc(c.notes)}</textarea></div>`,
@@ -245,7 +252,7 @@ function pageDashboard() {
 
   app.innerHTML = `
     <div class="page-head">
-      <div><h1>Dashboard</h1><div class="sub">Aaj ${fmtDate(asOf)} tak ka hisaab · Byaaj ${esc(s.ratePerMonth)}% mahina, ${esc(s.graceDays)} din baad</div></div>
+      <div><h1>Dashboard</h1><div class="sub">Aaj ${fmtDate(asOf)} tak ka hisaab · ${esc(termsText(termsFor({})))}</div></div>
       <div class="actions">
         <button class="btn primary" data-act="new-customer">+ Naya customer</button>
       </div>
@@ -354,7 +361,7 @@ function pageCustomer(id) {
   const s = db.settings;
   const asOf = customerAsOf || today();
   const terms = termsFor(c);
-  const sum = computeLedger(db.entriesFor(c.id), { ...terms, asOf });
+  const sum = computeAccount(db.entriesFor(c.id), { ...terms, asOf });
   const entries = sortEntries(db.entriesFor(c.id).filter((e) => e.date <= asOf));
   const limit = Number(c.creditLimit) || 0;
 
@@ -374,7 +381,7 @@ function pageCustomer(id) {
     </tr>`;
   }).join('');
 
-  const lotRows = sum.lots.map((l) => {
+  const lotRows = (sum.lots || []).map((l) => {
     const paid = l.payments.map((p) => `${fmtDate(p.date)}: ${money(p.amount)}${p.fromAdvance ? ' (advance se)' : ` · ${p.days} din ka byaaj ${money(p.interest)}`}`).join('<br>');
     return `<tr>
       <td>${fmtDate(l.date)}</td><td class="num">${money(l.amount)}</td>
@@ -401,7 +408,7 @@ function pageCustomer(id) {
           ${c.mobile ? `<span>📞 <a href="tel:${esc(c.mobile)}">${esc(c.mobile)}</a></span>` : ''}
           ${c.vehicle ? `<span>🚚 ${esc(c.vehicle)}</span>` : ''}
           ${c.address ? `<span>📍 ${esc(c.address)}</span>` : ''}
-          <span>Byaaj ${esc(terms.ratePerMonth)}% mahina · pehle ${esc(terms.graceDays)} din free</span>
+          <span>${esc(termsText(terms))}</span>
           ${limit ? `<span>Limit ${money(limit)}</span>` : ''}
         </div>
       </div>
@@ -438,6 +445,7 @@ function pageCustomer(id) {
         <tbody>${ledgerRows}</tbody>
         <tfoot><tr><td colspan="3">Kul</td><td class="num">${money(sum.totalUdhar)}</td><td class="num">${money(sum.totalJama)}</td><td class="num">${money(sum.principalDue)}</td><td class="no-print"></td></tr></tfoot>
         </table></div>` : '<div class="empty">Abhi koi entry nahi. "+ Udhar" ya "+ Jama" dabaiye.</div>')
+      : sum.method === METHODS.KHATA ? khataHtml(sum, terms, asOf)
       : (sum.lots.length ? `<div class="panel-body small muted">Har udhar par ${esc(terms.graceDays)} din ke baad ${esc(terms.ratePerMonth)}% mahina (simple) byaaj lagta hai. Jama paisa sabse purane udhar mein adjust hota hai, aur jitna hissa chukaya gaya uska byaaj usi din ruk jaata hai.</div>
         <div class="table-wrap"><table>
         <thead><tr><th>Udhar tareekh</th><th class="num">Udhar</th><th>Kab-kab chukaya</th><th class="num">Baaki</th><th class="num">Byaaj wale din</th><th class="num">Byaaj</th></tr></thead>
@@ -477,6 +485,43 @@ function pageCustomer(id) {
   });
 }
 
+function khataHtml(sum, terms, asOf) {
+  if (!sum.udharRows.length && !sum.jamaRows.length) return '<div class="empty">Abhi koi entry nahi.</div>';
+  const rate = terms.ratePerMonth;
+  const table = (title, cls, rows, total, interest, empty) => `
+    <div class="khata-col">
+      <h3 class="${cls}">${title}</h3>
+      ${rows.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Tareekh</th><th class="vivran">Vivran</th><th class="num">Amount</th><th class="num">Din</th><th class="num">Byaaj</th></tr></thead>
+        <tbody>${rows.map((r) => `<tr><td>${fmtDate(r.date)}</td><td class="muted small vivran">${esc(entryDetails(r.entry))}</td><td class="num">${money(r.amount)}</td><td class="num">${r.days}</td><td class="num">${money(r.interest)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>Kul</td><td class="vivran"></td><td class="num">${money(total)}</td><td></td><td class="num">${money(interest)}</td></tr></tfoot>
+      </table></div>` : `<div class="empty">${empty}</div>`}
+    </div>`;
+  const line = (label, value, cls = '') => `<tr class="${cls}"><td>${label}</td><td class="num">${value}</td></tr>`;
+  return `
+    <div class="panel-body small muted">Bank CC ki tarah: har udhar par uski tareekh se ${fmtDate(asOf)} tak byaaj judta hai, aur har jama par uski tareekh se ${fmtDate(asOf)} tak byaaj ghatta hai.
+      Byaaj = amount × ${esc(rate)}% ÷ 30 × din.</div>
+    <div class="khata-grid">
+      ${table('Udhar (naam) aur uska byaaj', 'text-danger', sum.udharRows, sum.totalUdhar, sum.udharInterest, 'Koi udhar nahi')}
+      ${table('Jama aur uska byaaj', 'text-ok', sum.jamaRows, sum.totalJama, sum.jamaInterest, 'Koi jama nahi')}
+    </div>
+    <div class="khata-final">
+      <h3>Final hisaab (${fmtDate(asOf)} tak)</h3>
+      <table><tbody>
+        ${line('Kul udhar', money(sum.totalUdhar))}
+        ${line('+ Udhar par byaaj', money(sum.udharInterest))}
+        ${line('Udhar byaaj sahit', money(sum.totalUdhar + sum.udharInterest), 'subtotal')}
+        ${line('− Kul jama', money(sum.totalJama))}
+        ${line('− Jama par byaaj', money(sum.jamaInterest))}
+        ${line('Jama byaaj sahit', money(sum.totalJama + sum.jamaInterest), 'subtotal')}
+        ${sum.interestPaid ? line('− Byaaj ka paisa jama', money(sum.interestPaid)) : ''}
+        ${sum.interestWaived ? line('− Byaaj maaf', money(sum.interestWaived)) : ''}
+        ${line('Final baaki', money(sum.totalDue), 'grand')}
+      </tbody></table>
+      <p class="small muted">Isme udhar baaki ${money(sum.principalDue)} aur shudh byaaj ${money(sum.interestDue)} hai.</p>
+    </div>`;
+}
+
 function pageSettings() {
   const s = db.settings;
   app.innerHTML = `
@@ -490,11 +535,16 @@ function pageSettings() {
           <div class="field"><label for="s-address">Pata</label><input id="s-address" name="address" value="${esc(s.address)}"></div>
           <div class="field"><label for="s-phone">Phone</label><input id="s-phone" name="phone" value="${esc(s.phone)}"></div>
         </div>
+        <div class="field"><label for="s-method">Byaaj ka tareeka</label>
+          <select id="s-method" name="interestMethod">
+            <option value="${METHODS.KHATA}" ${s.interestMethod !== METHODS.FIFO ? 'selected' : ''}>Bank CC / khata jaisa: har udhar par byaaj judta hai, har jama par byaaj ghatta hai</option>
+            <option value="${METHODS.FIFO}" ${s.interestMethod === METHODS.FIFO ? 'selected' : ''}>Free din ke baad: jama purane udhar mein katta hai, free din ke baad byaaj</option>
+          </select></div>
         <div class="grid2">
           <div class="field"><label for="s-rate">Default byaaj (% per mahina)</label><input id="s-rate" name="ratePerMonth" type="number" min="0" step="0.01" required value="${esc(s.ratePerMonth)}">
             <div class="hint">2% mahina = 24% saal. Simple interest, 1 mahina = 30 din.</div></div>
-          <div class="field"><label for="s-grace">Kitne din tak byaaj nahi</label><input id="s-grace" name="graceDays" type="number" min="0" step="1" required value="${esc(s.graceDays)}">
-            <div class="hint">Har udhar ki tareekh se gine jaate hain.</div></div>
+          <div class="field"><label for="s-grace">Overdue / free din</label><input id="s-grace" name="graceDays" type="number" min="0" step="1" required value="${esc(s.graceDays)}">
+            <div class="hint">Itne din se purana udhar "overdue" dikhega. Doosre tareeke mein itne din byaaj nahi lagta.</div></div>
         </div>
         <button class="btn primary" type="submit">Save</button>
       </div>
@@ -574,6 +624,9 @@ function loadDemo() {
     { name: 'City School Bus', mobile: '9000011111', vehicle: 'MP09 PA 2020', graceDays: 15,
       entries: [['udhar', 65, 'Diesel', 150, 87.6], ['jama', 30, 13140], ['byaaj_jama', 30, 175], ['udhar', 8, 'Diesel', 120, 88.1]] },
   ];
+  const partyA = db.upsertCustomer({ name: 'Party A', mobile: '9811122233', vehicle: 'MP09 AA 0001' });
+  db.addEntry({ customerId: partyA, type: 'udhar', date: '2026-09-07', fuel: 'Engine Oil', amount: 50000, note: 'Oil' });
+  db.addEntry({ customerId: partyA, type: 'jama', date: '2026-09-17', amount: 5000, mode: 'Cash' });
   for (const { entries, ...c } of demo) {
     const id = db.upsertCustomer(c);
     for (const [type, ago, a, b, cc] of entries) {

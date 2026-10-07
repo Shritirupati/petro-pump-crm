@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeLedger, daysBetween } from '../js/interest.js';
+import { computeLedger, computeKhata, computeAccount, daysBetween } from '../js/interest.js';
 
 const opts = (asOf, extra = {}) => ({ ratePerMonth: 2, graceDays: 30, asOf, ...extra });
 let n = 0;
@@ -74,4 +74,35 @@ test('entries after asOf are ignored and per-customer rate applies', () => {
   // 90 days at 3%/month => 10000 * 0.03/30 * 90 = 900
   assert.equal(r.interestDue, 900);
   assert.equal(r.principalDue, 10000);
+});
+
+test('khata method: udhar interest minus jama interest (CC style)', () => {
+  const entries = [udhar('2026-09-07', 50000), jama('2026-09-17', 5000)];
+  const r = computeKhata(entries, { ratePerMonth: 2, asOf: '2026-10-07' });
+  // 50000 for 30 days = 1000; 5000 for 20 days = 66.67
+  assert.equal(r.udharRows[0].days, 30);
+  assert.equal(r.udharInterest, 1000);
+  assert.equal(r.jamaRows[0].days, 20);
+  assert.equal(r.jamaInterest, 66.67);
+  assert.equal(r.interestDue, 933.33);
+  assert.equal(r.principalDue, 45000);
+  assert.equal(r.totalDue, 45933.33);
+});
+
+test('khata method equals daily interest on running balance', () => {
+  const entries = [udhar('2026-01-01', 12000), jama('2026-01-21', 3000), udhar('2026-02-10', 6000), jama('2026-03-01', 9000)];
+  const r = computeKhata(entries, { ratePerMonth: 3, asOf: '2026-04-01' });
+  // balances: 12000 x20d, 9000 x20d, 15000 x19d, 6000 x31d
+  const expected = (12000 * 20 + 9000 * 20 + 15000 * 19 + 6000 * 31) * 0.03 / 30;
+  assert.ok(Math.abs(r.interestDue - expected) < 0.02);
+});
+
+test('computeAccount picks the method and keeps byaaj jama / maaf', () => {
+  const entries = [udhar('2026-01-01', 10000), { id: 'p', type: 'byaaj_jama', date: '2026-03-01', amount: 100 }];
+  const k = computeAccount(entries, { method: 'khata', ratePerMonth: 2, graceDays: 30, asOf: '2026-04-01' });
+  assert.equal(k.interestAccrued, 600); // 90 days, no free days in khata method
+  assert.equal(k.interestDue, 500);
+  assert.equal(k.oldestPendingDays, 90);
+  const f = computeAccount(entries, { method: 'fifo', ratePerMonth: 2, graceDays: 30, asOf: '2026-04-01' });
+  assert.equal(f.interestDue, 300);
 });
