@@ -82,6 +82,8 @@ tfoot td { font-weight: 700; background: #fafbfa; border-top: 2px solid var(--bo
 .btn.udhar { background: var(--danger-soft); border-color: #f5c2bd; color: var(--danger); }
 .btn.jama { background: var(--primary-soft); border-color: #b9dcc8; color: var(--primary); }
 .btn.ghost { background: transparent; }
+.btn.wa { background: #25d366; border-color: #1ebe5a; color: #fff; }
+.btn.wa:hover { background: #1ebe5a; }
 .btn.small { padding: 4px 9px; min-height: 30px; font-size: .85rem; }
 .icon-btn { border: 0; background: transparent; font-size: 1.1rem; cursor: pointer; color: var(--muted); padding: 4px 8px; border-radius: 6px; }
 .icon-btn:hover { background: #eef1ef; color: var(--text); }
@@ -155,6 +157,9 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 24
   .panel, .card { box-shadow: none; break-inside: avoid; }
   .cards { grid-template-columns: repeat(4, 1fr); }
   .card .value { font-size: 1.1rem; }
+  /* Browsers repeat <tfoot> on every printed page; show the totals only once, at the end. */
+  tfoot { display: table-row-group; }
+  thead { display: table-header-group; }
   th { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 

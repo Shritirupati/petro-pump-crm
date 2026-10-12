@@ -1,79 +1,86 @@
 # Petrol Pump CRM
 
-Petrol pump ke udhar (credit) customers ka hisaab rakhne ki web app: customer jodna,
-udhar aur jama ki entry, aur byaaj (interest) ka apne-aap calculation.
+A simple web app for a petrol pump to manage credit customers: record credit sales and
+payments, calculate interest automatically, and share account statements as PDF.
 
-## Kya-kya hai
+## Features
 
-- **Customers**: naam, mobile, gaadi number, pata, credit limit, aur har customer ka alag byaaj rate (optional)
-- **Udhar entry**: tareekh, Petrol/Diesel/CNG, litre × rate = amount (apne-aap), gaadi no., bill no.
-- **Jama entry**: udhar ka paisa, byaaj ka paisa, ya byaaj maaf (Cash/UPI/Cheque…)
-- **Byaaj calculation** (har customer ke page par "Byaaj ka hisaab" tab mein poori details)
-- **Dashboard**: kul baaki, kul byaaj, overdue customers, is mahine ka udhar aur vasooli
-- **Khata / statement**: running balance, kisi bhi tareekh tak ka hisaab, print/PDF
-- **WhatsApp reminder**: ek click mein baaki amount ka message
-- **Backup**: JSON download/restore, aur saari entries Excel (CSV) mein
-- Mobile aur computer dono par chalti hai
+- **Customers**: name, mobile, vehicle numbers, address, credit limit, and an optional per-customer interest rate
+- **Credit sales**: date, fuel/item, litres × rate = amount (auto), vehicle no., bill no.
+- **Payments**: against balance, interest payments, or interest waivers (Cash / UPI / Cheque…)
+- **Interest**: % per year, calculated automatically (see below)
+- **Ledger**: running balance, days and interest for every entry, statement for any date
+- **PDF statement**: download a formatted A4 PDF of the customer's account
+- **Send PDF on WhatsApp**: on phones the PDF is attached directly through the share menu;
+  on computers the PDF is downloaded and the customer's WhatsApp chat opens to attach it
+- **Print**: print-friendly statement (totals printed once, at the end)
+- **WhatsApp reminder**: one-click text message with the outstanding amount
+- **Dashboard**: total receivable, interest, overdue customers, this month's sales and collections
+- **Mistake guard**: warns when a payment is larger than the balance (e.g. an extra zero)
+- **Backup**: JSON download/restore and CSV export for Excel
+- Works on mobile and desktop
 
-## Byaaj ke niyam
+## Interest
 
-Settings mein do tareeke hain (default: **Bank CC / khata jaisa**):
+The rate is set as **% per year** (simple interest, 365-day year), in Settings and optionally per customer.
 
-### 1. Bank CC / khata jaisa (naam-jama byaaj), default
+### 1. Daily balance method (default)
 
-- Har **udhar** par uski tareekh se aaj (ya chuni hui tareekh) tak byaaj **judta** hai.
-- Har **jama** par uski tareekh se aaj tak byaaj **ghatta** hai.
-- Final baaki = udhar + udhar ka byaaj − jama − jama ka byaaj − byaaj jama/maaf.
+- Every **credit sale** is charged interest from its date to the statement date.
+- Every **payment** earns interest back from its date to the statement date.
+- Total outstanding = sales + interest on sales − payments − interest on payments − interest paid/waived.
 
-Udaharan (2% mahina, 07-10-2026 tak):
+Example at 24% per year, statement date 07-10-2026:
 
-| | Amount | Din | Byaaj |
+| | Amount | Days | Interest |
 |---|---|---|---|
-| Udhar 07-09-2026 | ₹50,000 | 30 | ₹1,000 |
-| Jama 17-09-2026 | ₹5,000 | 20 | ₹66.67 |
-| **Final baaki** | 51,000 − 5,066.67 | | **₹45,933.33** |
+| Credit sale 07-09-2026 | ₹50,000 | 30 | + ₹986.30 |
+| Payment 17-09-2026 | ₹5,000 | 20 | − ₹65.75 |
+| **Total outstanding** | ₹45,000 principal + ₹920.55 interest | | **₹45,920.55** |
 
-Byaaj = amount × rate% ÷ 30 × din. Ye bank ke CC account ke daily balance par byaaj jaisa hi nikalta hai.
+Interest = amount × rate% ÷ 365 × days. This equals daily interest on the running balance.
 
-### 2. Free din ke baad (FIFO)
+### 2. Interest-free period method
 
-- Har udhar par pehle 30 din (badal sakte hain) byaaj nahi, uske baad 2% mahina.
-- Jama paisa sabse purane udhar mein pehle adjust hota hai.
+- Each credit sale is interest-free for a set number of days (default 30), then interest applies.
+- Payments clear the oldest unpaid sale first.
 
-Rate aur din har customer ke liye alag bhi rakh sakte hain.
+Data saved by older versions (rate per month) is converted automatically: 2% per month becomes 24% per year.
 
-## Chalana
+## Running
 
-Koi server ya database nahi chahiye. Ye ek static website hai.
+No server or database needed; it is a static website.
 
 ```bash
-npm start        # http://localhost:8080 par kholein
-npm test         # byaaj calculation ke tests
+npm start        # open http://localhost:8080
+npm test         # interest calculation tests
 ```
 
-Ya bina install ke: `python3 -m http.server 8080` chala kar browser mein `http://localhost:8080` kholein.
+Or without Node: run `python3 -m http.server 8080` and open `http://localhost:8080`.
 
-### Online chalana (GitHub Pages, free)
+### Online (GitHub Pages, free)
 
-Repo ki **Settings → Pages → Branch: `main` / root → Save**. Kuch minute mein app
-`https://<username>.github.io/petro-pump-crm/` par khul jayegi.
+Repository **Settings → Pages → Branch: `main` / root → Save**. The app will be available at
+`https://<username>.github.io/petro-pump-crm/`.
 
-## Data kahan save hota hai (zaroor padhein)
+## Where data is stored (important)
 
-Abhi saara data **usi browser** (localStorage) mein save hota hai jisme app kholi gayi hai:
+All data is stored in **this browser only** (localStorage):
 
-- Dusre phone/computer par data apne-aap nahi dikhega.
-- Browser ka data/history clear karne par data mit sakta hai.
-- Isliye **Settings → Backup download** roz ya hafte mein ek baar karein.
+- It does not sync to other phones or computers.
+- Clearing browser data can erase it.
+- Use **Settings → Download backup** daily or weekly.
 
-Ek se zyada device/staff ke liye agla step: online database (jaise Firebase ya Supabase) aur login jodna.
+For several devices or staff logins, the next step is an online database (e.g. Firebase or Supabase) with login.
 
 ## Code
 
-| File | Kaam |
+| File | Purpose |
 |---|---|
-| `index.html`, `css/style.css` | Page aur design |
-| `js/app.js` | Saari screens aur forms |
-| `js/store.js` | Data save/load, backup |
-| `js/interest.js` | Byaaj ka calculation (pure function, tested) |
-| `tests/interest.test.js` | Byaaj calculation ke tests |
+| `index.html`, `css/style.css` | Page and styling |
+| `js/app.js` | Screens, forms, WhatsApp sharing |
+| `js/pdf.js` | PDF statement layout |
+| `js/store.js` | Saving/loading data, backup, migration |
+| `js/interest.js` | Interest calculation (pure functions, tested) |
+| `js/vendor/` | jsPDF 4.2.1 and jsPDF-AutoTable 5.0.8 (MIT licence) |
+| `tests/interest.test.js` | Interest calculation tests |
