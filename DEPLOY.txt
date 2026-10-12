@@ -7,7 +7,7 @@ EK BAAR KA SETUP (sirf pehli baar)
    https://nodejs.org  ->  "LTS" wala download karo  ->  Next, Next, Finish.
 
 2. Ye ZIP file kisi folder mein extract (unzip) karo, jaise:
-   Desktop\petro-pump-crm
+   Desktop\petrol-pump-crm
 
 3. Us folder ko kholo. Upar address bar mein  cmd  likh kar Enter dabao.
    (Mac par: Terminal kholo aur  cd  likh kar folder ko Terminal mein drag karo, Enter.)
@@ -29,7 +29,7 @@ HAR BAAR DEPLOY (pehli baar aur har update par)
    - App ko website par chadhayega
 
 7. Aakhir mein ek link aayega, jaise:
-      Hosting URL: https://petro-pump-crm.web.app
+      Hosting URL: https://petrol-pump-crm.web.app
    Yahi app ka link hai.
 
 PEHLI BAAR APP KHOLNE PAR

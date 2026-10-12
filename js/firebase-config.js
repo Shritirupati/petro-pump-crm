@@ -2,9 +2,9 @@
 // These values are public by design; access is protected by firestore.rules.
 export const firebaseConfig = {
   apiKey: 'AIzaSyCtDc5qwvv-FzcQb1UUIQ9t2JR4YjvV_Go',
-  authDomain: 'petro-pump-crm.firebaseapp.com',
-  projectId: 'petro-pump-crm',
-  storageBucket: 'petro-pump-crm.firebasestorage.app',
+  authDomain: 'petrol-pump-crm.firebaseapp.com',
+  projectId: 'petrol-pump-crm',
+  storageBucket: 'petrol-pump-crm.firebasestorage.app',
   messagingSenderId: '942245943299',
   appId: '1:942245943299:web:8dcab2331ce65e1bb7d636',
 };
