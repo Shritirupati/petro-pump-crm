@@ -1,7 +1,7 @@
 // Interest (byaaj) calculation for one customer's ledger.
 //
 // Rules:
-// - Simple interest, rate given as % per month (1 month = 30 days).
+// - Simple interest, rate given as % per year (365-day year).
 // - No interest for the first `graceDays` days after each udhar entry.
 // - A jama (payment) settles the oldest pending udhar first (FIFO).
 // - Interest on each part of an udhar runs until the day that part is paid
@@ -44,8 +44,8 @@ export function sortEntries(entries) {
     (a.createdAt || 0) - (b.createdAt || 0));
 }
 
-export function computeLedger(entries, { ratePerMonth, graceDays, asOf }) {
-  const dailyRate = (Number(ratePerMonth) || 0) / 100 / 30;
+export function computeLedger(entries, { ratePerYear, graceDays, asOf }) {
+  const dailyRate = (Number(ratePerYear) || 0) / 100 / 365;
   const grace = Math.max(0, Number(graceDays) || 0);
   const chargeableDays = (from, to) => Math.max(0, daysBetween(from, to) - grace);
 
@@ -130,13 +130,13 @@ export function computeLedger(entries, { ratePerMonth, graceDays, asOf }) {
   };
 }
 
-// Bank CC / bahi-khata style (naam-jama byaaj):
+// Daily balance method:
 // every udhar earns interest from its own date until `asOf`, and every jama
 // earns the customer interest from its own date until `asOf`. Net interest is
 // udhar interest minus jama interest. Same result as daily interest on the
 // running balance, but every entry's share is visible.
-export function computeKhata(entries, { ratePerMonth, asOf }) {
-  const dailyRate = (Number(ratePerMonth) || 0) / 100 / 30;
+export function computeKhata(entries, { ratePerYear, asOf }) {
+  const dailyRate = (Number(ratePerYear) || 0) / 100 / 365;
   const udharRows = [];
   const jamaRows = [];
   const byaajRows = [];
@@ -173,12 +173,12 @@ export function computeKhata(entries, { ratePerMonth, asOf }) {
 export const METHODS = { KHATA: 'khata', FIFO: 'fifo' };
 
 // One summary shape for the UI, whichever interest method is selected.
-export function computeAccount(entries, { method = METHODS.KHATA, ratePerMonth, graceDays, asOf }) {
+export function computeAccount(entries, { method = METHODS.KHATA, ratePerYear, graceDays, asOf }) {
   if (method === METHODS.FIFO) {
-    return { method, ...computeLedger(entries, { ratePerMonth, graceDays, asOf }) };
+    return { method, ...computeLedger(entries, { ratePerYear, graceDays, asOf }) };
   }
-  const khata = computeKhata(entries, { ratePerMonth, asOf });
-  const age = computeLedger(entries, { ratePerMonth: 0, graceDays: 0, asOf });
+  const khata = computeKhata(entries, { ratePerYear, asOf });
+  const age = computeLedger(entries, { ratePerYear: 0, graceDays: 0, asOf });
   return {
     method: METHODS.KHATA,
     ...khata,

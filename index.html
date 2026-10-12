@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="hi">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -23,7 +23,7 @@
     <form method="dialog" id="modal-form" novalidate>
       <header class="modal-head">
         <h2 id="modal-title"></h2>
-        <button type="button" class="icon-btn" data-close aria-label="Band karein">✕</button>
+        <button type="button" class="icon-btn" data-close aria-label="Close">✕</button>
       </header>
       <div id="modal-body"></div>
       <footer class="modal-foot">
@@ -35,6 +35,8 @@
 
   <div id="toast" role="status" aria-live="polite"></div>
 
+  <script src="js/vendor/jspdf.umd.min.js"></script>
+  <script src="js/vendor/jspdf.plugin.autotable.min.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

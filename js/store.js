@@ -9,11 +9,11 @@ export const PAY_MODES = ['Cash', 'UPI', 'Cheque', 'Bank Transfer', 'Card'];
 function defaults() {
   return {
     settings: {
-      pumpName: 'Mera Petrol Pump',
+      pumpName: 'My Petrol Pump',
       address: '',
       phone: '',
       interestMethod: 'khata',
-      ratePerMonth: 2,
+      ratePerYear: 24,
       graceDays: 30,
       lastRates: { Petrol: 0, Diesel: 0, CNG: 0 },
     },
@@ -34,11 +34,21 @@ function load() {
   return defaults();
 }
 
+// Older versions stored the interest rate as % per month; convert to % per year.
+function monthlyToYearly(obj) {
+  if (obj && obj.ratePerYear === undefined && obj.ratePerMonth !== undefined) {
+    const { ratePerMonth, ...rest } = obj;
+    const yearly = ratePerMonth === '' || ratePerMonth == null ? '' : Math.round(Number(ratePerMonth) * 12 * 100) / 100;
+    return { ...rest, ratePerYear: yearly };
+  }
+  return obj;
+}
+
 function normalize(data) {
   const base = defaults();
   return {
-    settings: { ...base.settings, ...(data.settings || {}) },
-    customers: Array.isArray(data.customers) ? data.customers : [],
+    settings: { ...base.settings, ...monthlyToYearly(data.settings || {}) },
+    customers: Array.isArray(data.customers) ? data.customers.map(monthlyToYearly) : [],
     entries: Array.isArray(data.entries) ? data.entries : [],
   };
 }
@@ -48,7 +58,7 @@ export function save() {
     localStorage.setItem(KEY, JSON.stringify(state));
     return true;
   } catch (err) {
-    alert('Data save nahi ho paya. Turant Settings > Backup download kar lein.');
+    alert('Could not save data. Please download a backup from Settings right away.');
     console.error(err);
     return false;
   }
@@ -102,7 +112,7 @@ export const db = {
 
   importJson(text) {
     const data = JSON.parse(text);
-    if (!Array.isArray(data.customers) || !Array.isArray(data.entries)) throw new Error('Ye sahi backup file nahi hai');
+    if (!Array.isArray(data.customers) || !Array.isArray(data.entries)) throw new Error('This is not a valid backup file');
     state = normalize(data);
     save();
   },
