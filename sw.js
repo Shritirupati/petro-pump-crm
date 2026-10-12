@@ -1,6 +1,6 @@
 // Offline support: keeps the app's own files so it opens without internet.
 // Data offline support comes from Firestore's local cache.
-const CACHE = 'pump-crm-v2026-10-13';
+const CACHE = 'pump-crm-v2026-10-14';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => {

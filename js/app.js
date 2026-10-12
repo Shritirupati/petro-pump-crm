@@ -1,11 +1,10 @@
 // Bump ?v= here and in index.html on every release so browsers load the new files.
 import {
   db, FUELS, PAY_MODES, session, sync, uid, usernameOk, setHandlers, watchAuth, isSetupDone,
-  signIn, signOutUser, createOwner, createStaff, setUserActive, changeMyPassword,
-} from './store.js?v=2026-10-13';
-import { computeAccount, monthlyBreakdown, sortEntries, round2, TYPES, METHODS } from './interest.js?v=2026-10-13';
-import { buildStatementPdf } from './pdf.js?v=2026-10-13';
-import { DEMO_CUSTOMER, DEMO_ENTRIES, DEMO_RATE } from './demo-data.js?v=2026-10-13';
+  signIn, signOutUser, createOwner, createStaff, setUserActive, changeMyPassword, verifyPassword,
+} from './store.js?v=2026-10-14';
+import { computeAccount, monthlyBreakdown, sortEntries, round2, TYPES, METHODS } from './interest.js?v=2026-10-14';
+import { buildStatementPdf } from './pdf.js?v=2026-10-14';
 
 const app = document.getElementById('app');
 const modal = document.getElementById('modal');
@@ -94,6 +93,7 @@ function openModal({ title, body, submitLabel = 'Save', onSubmit, onOpen }) {
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML = body;
   document.getElementById('modal-submit').textContent = submitLabel;
+  document.getElementById('modal-submit').className = 'btn primary';
   modalSubmit = onSubmit;
   modal.showModal();
   onOpen?.(modalForm);
@@ -366,7 +366,7 @@ function pageDashboard() {
     ${db.customers.length ? '' : `
       <div class="panel"><div class="empty">
         <p><b>No customers yet.</b></p>
-        <p>Add your first customer to start.${session.isOwner ? ' To try the app first, use Settings → Load demo data.' : ''}</p>
+        <p>Add your first customer to start.</p>
         <div class="actions" style="justify-content:center">
           <button class="btn primary" data-act="new-customer">+ Add first customer</button>
         </div>
@@ -607,13 +607,15 @@ function pageCustomer(id) {
   on('pdf', () => downloadPdf(c, asOf));
   on('print', () => window.print());
   on('edit-customer', () => customerForm(c));
-  on('delete-customer', () => {
-    if (confirm(`Delete "${c.name}" and all ${db.entriesFor(c.id).length} entries? This cannot be undone.`)) {
+  on('delete-customer', () => confirmWithPassword({
+    title: `Delete ${c.name}`,
+    warning: `Delete "${c.name}" and all ${db.entriesFor(c.id).length} entries? This cannot be undone.`,
+    action: () => {
       db.deleteCustomer(c.id);
       toast('Customer deleted');
       location.hash = '#/customers';
-    }
-  });
+    },
+  }));
   app.querySelectorAll('details.month').forEach((d) => {
     d.addEventListener('toggle', () => {
       const set = openMonths.get(c.id) || new Set();
@@ -775,11 +777,10 @@ function pageSettings() {
     </div>
 
     <div class="panel">
-      <div class="panel-head"><h2>Demo / Reset</h2></div>
+      <div class="panel-head"><h2>Erase data</h2></div>
       <div class="panel-body">
-        <p class="small muted" style="margin-top:0">Demo data is added to the real online data. Use it only for testing, then delete the demo customer.</p>
+        <p class="small muted" style="margin-top:0">Permanently deletes every customer and entry for all users. Download a backup first. You will be asked twice, the second time with your password.</p>
         <div class="actions">
-          <button class="btn" data-act="demo">Load demo data</button>
           <button class="btn danger" data-act="reset">Erase all data</button>
         </div>
       </div>
@@ -819,25 +820,66 @@ function pageSettings() {
   });
   on('backup', () => download(`petrol-pump-backup-${today()}.json`, db.exportJson(), 'application/json'));
   on('csv', exportCsv);
-  on('demo', loadDemo);
-  on('reset', async () => {
-    if (confirm('All customers and entries will be permanently deleted for every user. Have you downloaded a backup?') && confirm('Are you sure? This cannot be undone.')) {
+  on('reset', () => confirmWithPassword({
+    title: 'Erase all data',
+    warning: `All ${db.customers.length} customers and ${db.entries.length} entries will be permanently deleted for every user. Have you downloaded a backup?`,
+    action: async () => {
       toast('Erasing…', 10000);
       try { await db.reset(); toast('All data erased'); } catch (err) { alert(`Could not erase: ${err.message}`); }
-    }
-  });
+    },
+  }));
   document.getElementById('restore').onchange = async (ev) => {
     const file = ev.target.files[0];
     if (!file) return;
-    if (!confirm('This will replace all current data (for every user) with the backup. Continue?')) return;
-    toast('Restoring… keep this page open', 20000);
-    try {
-      await db.importJson(await file.text());
-      toast('Data restored from backup');
-    } catch (err) {
-      alert(`Could not restore the backup: ${err.message}`);
-    }
+    const text = await file.text();
+    ev.target.value = '';
+    confirmWithPassword({
+      title: 'Restore from backup',
+      warning: 'All current data (for every user) will be deleted and replaced with the backup. Continue?',
+      action: async () => {
+        toast('Restoring… keep this page open', 20000);
+        try {
+          await db.importJson(text);
+          toast('Data restored from backup');
+        } catch (err) {
+          alert(`Could not restore the backup: ${err.message}`);
+        }
+      },
+    });
   };
+}
+
+// Deleting data needs two confirmations: a yes/no question, then the owner's
+// password plus typing DELETE.
+function confirmWithPassword({ title, warning, action }) {
+  if (!confirm(`${warning}\n\nStep 1 of 2: click OK to continue.`)) return;
+  let busy = false;
+  openModal({
+    title: `${title} – step 2 of 2`,
+    submitLabel: 'Delete permanently',
+    body: `
+      <p style="margin-top:0" class="text-danger"><b>${esc(warning)}</b></p>
+      <div class="field"><label for="cp-pass">Your password</label><input id="cp-pass" name="password" type="password" required autocomplete="current-password"></div>
+      <div class="field"><label for="cp-word">Type <b>DELETE</b> to confirm</label><input id="cp-word" name="word" required autocomplete="off" autocapitalize="characters"></div>
+      <p class="text-danger small" id="cp-error" role="alert"></p>`,
+    onOpen(form) { form.querySelector('#modal-submit').classList.add('danger'); },
+    onSubmit(d, form) {
+      const err = form.querySelector('#cp-error');
+      if (d.word.trim() !== 'DELETE') { err.textContent = 'Please type DELETE in capital letters.'; return false; }
+      if (busy) return false;
+      busy = true;
+      err.textContent = 'Checking password…';
+      verifyPassword(d.password)
+        .then(() => { modal.close(); action(); })
+        .catch((e) => {
+          err.textContent = /wrong-password|invalid-credential/.test(e.code) ? 'Wrong password. Nothing was deleted.'
+            : e.code === 'auth/network-request-failed' ? 'Needs internet to check the password. Nothing was deleted.'
+              : e.code === 'auth/too-many-requests' ? 'Too many attempts. Please wait a few minutes.' : e.message;
+        })
+        .finally(() => { busy = false; });
+      return false;
+    },
+  });
 }
 
 function staffForm() {
@@ -889,22 +931,6 @@ function exportCsv() {
     return [fmtDate(e.date), c.name, c.mobile, typeLabel(e.type), e.fuel, e.qty, e.rate, e.amount, e.vehicle, e.billNo, e.mode, e.ref, e.note, e.by].map(cell).join(',');
   });
   download(`petrol-pump-entries-${today()}.csv`, '﻿' + [head.map(cell).join(','), ...lines].join('\r\n'), 'text/csv');
-}
-
-async function loadDemo() {
-  if (!confirm('Add the demo customer and 45 demo entries to the online data?')) return;
-  const id = uid();
-  const entries = DEMO_ENTRIES.map(([date, type, amount, vehicle, qty, note], i) => (type === TYPES.UDHAR
-    ? { id: `${id}-${i}`, customerId: id, type, date, fuel: 'Diesel', qty: qty || '', rate: DEMO_RATE, amount, vehicle, note, createdAt: i, by: session.username }
-    : { id: `${id}-${i}`, customerId: id, type, date, amount, mode: 'Cash', createdAt: i, by: session.username }));
-  toast('Loading demo data…', 10000);
-  try {
-    await db.addMany([{ ...DEMO_CUSTOMER, id, createdAt: Date.now() }], entries);
-    toast('Demo data loaded');
-    location.hash = `#/customer/${id}`;
-  } catch (err) {
-    alert(`Could not load demo data: ${err.message}`);
-  }
 }
 
 // ---------- sign in ----------

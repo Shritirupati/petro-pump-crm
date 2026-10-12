@@ -5,8 +5,8 @@
 // straight away and sent to Firestore, which queues them while offline and
 // syncs when the connection returns.
 
-import { firebaseConfig } from './firebase-config.js?v=2026-10-13';
-import * as fb from './vendor/firebase.js?v=2026-10-13';
+import { firebaseConfig } from './firebase-config.js?v=2026-10-14';
+import * as fb from './vendor/firebase.js?v=2026-10-14';
 
 export const FUELS = ['Petrol', 'Diesel', 'CNG', 'Engine Oil', 'Other'];
 export const PAY_MODES = ['Cash', 'UPI', 'Cheque', 'Bank Transfer', 'Card'];
@@ -199,11 +199,15 @@ export async function createOwner({ pumpName, name, username, password }) {
   await batch.commit();
 }
 
-export async function changeMyPassword(current, next) {
+// Throws if the password is wrong (needs internet).
+export async function verifyPassword(password) {
   const user = auth.currentUser;
-  const cred = fb.EmailAuthProvider.credential(user.email, current);
-  await fb.reauthenticateWithCredential(user, cred);
-  await fb.updatePassword(user, next);
+  await fb.reauthenticateWithCredential(user, fb.EmailAuthProvider.credential(user.email, password));
+}
+
+export async function changeMyPassword(current, next) {
+  await verifyPassword(current);
+  await fb.updatePassword(auth.currentUser, next);
 }
 
 // Creating an account signs that account in, so do it on a second Firebase
@@ -338,10 +342,6 @@ export const db = {
       ...state.customers.map((c) => (b) => b.delete(ref('customers', c.id))),
       (b) => b.set(ref('settings', 'main'), { ...defaultSettings(), pumpName: state.settings.pumpName }),
     ]);
-  },
-
-  async addMany(customers, entries) {
-    await commitInChunks(writeAllOps({ customers, entries }, { withSettings: false }));
   },
 
   // Data saved by the earlier browser-only version, if any.
