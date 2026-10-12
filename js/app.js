@@ -1,6 +1,7 @@
-import { db, FUELS, PAY_MODES } from './store.js';
-import { computeAccount, sortEntries, round2, TYPES, METHODS } from './interest.js';
-import { buildStatementPdf } from './pdf.js';
+// Bump ?v= here and in index.html on every release so browsers load the new files.
+import { db, FUELS, PAY_MODES } from './store.js?v=2026-10-12';
+import { computeAccount, sortEntries, round2, TYPES, METHODS } from './interest.js?v=2026-10-12';
+import { buildStatementPdf } from './pdf.js?v=2026-10-12';
 
 const app = document.getElementById('app');
 const modal = document.getElementById('modal');
