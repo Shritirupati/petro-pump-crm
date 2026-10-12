@@ -1,8 +1,8 @@
 // Bump ?v= here and in index.html on every release so browsers load the new files.
-import { db, FUELS, PAY_MODES } from './store.js?v=2026-10-12c';
-import { computeAccount, sortEntries, round2, TYPES, METHODS } from './interest.js?v=2026-10-12c';
-import { buildStatementPdf } from './pdf.js?v=2026-10-12c';
-import { DEMO_CUSTOMER, DEMO_ENTRIES, DEMO_RATE } from './demo-data.js?v=2026-10-12c';
+import { db, FUELS, PAY_MODES } from './store.js?v=2026-10-13';
+import { computeAccount, monthlyBreakdown, sortEntries, round2, TYPES, METHODS } from './interest.js?v=2026-10-13';
+import { buildStatementPdf } from './pdf.js?v=2026-10-13';
+import { DEMO_CUSTOMER, DEMO_ENTRIES, DEMO_RATE } from './demo-data.js?v=2026-10-13';
 
 const app = document.getElementById('app');
 const modal = document.getElementById('modal');
@@ -259,7 +259,7 @@ function interestByEntry(sum) {
 
 function statementData(c, asOf) {
   const terms = termsFor(c);
-  const sum = computeAccount(db.entriesFor(c.id), { ...terms, asOf });
+  const { account: sum, months } = monthlyBreakdown(db.entriesFor(c.id), { ...terms, asOf });
   const interest = interestByEntry(sum);
   let balance = 0;
   const rows = sortEntries(db.entriesFor(c.id).filter((e) => e.date <= asOf)).map((e) => {
@@ -268,8 +268,13 @@ function statementData(c, asOf) {
     const ri = interest.get(e.id);
     return { e, balance: round2(balance), days: ri?.days ?? '', interest: ri?.value || 0 };
   });
-  return { terms, sum, rows };
+  return { terms, sum, rows, months };
 }
+
+const monthName = (ym) => {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+};
 
 function entryDetails(e) {
   if (e.type === TYPES.UDHAR) {
@@ -282,10 +287,10 @@ function entryDetails(e) {
 
 function makePdf(c, asOf) {
   if (!window.jspdf || !window.autoTable) throw new Error('PDF library did not load. Please refresh the page.');
-  const { terms, sum, rows } = statementData(c, asOf);
+  const { terms, sum, rows, months } = statementData(c, asOf);
   const doc = buildStatementPdf({
-    settings: db.settings, customer: c, termsLabel: termsText(terms), sum, rows, asOf,
-    fmtDate, typeLabel, details: entryDetails,
+    settings: db.settings, customer: c, termsLabel: termsText(terms), sum, rows, months, asOf,
+    fmtDate, typeLabel, details: entryDetails, monthName,
   });
   const safe = c.name.replace(/[^\w-]+/g, '_').replace(/^_+|_+$/g, '') || 'customer';
   return { blob: doc.output('blob'), filename: `Statement_${safe}_${fmtDate(asOf)}.pdf`, sum };
@@ -442,6 +447,10 @@ function pageCustomers(query = '') {
 }
 
 let customerTab = 'ledger';
+const openMonths = new Map(); // customer id -> months the user has opened
+
+// Printing shows every month, open or not.
+window.addEventListener('beforeprint', () => document.querySelectorAll('details.month').forEach((d) => { d.open = true; }));
 let customerAsOf = null;
 
 function pageCustomer(id) {
@@ -449,11 +458,11 @@ function pageCustomer(id) {
   if (!c) { app.innerHTML = '<div class="panel"><div class="empty">Customer not found. <a href="#/customers">Go back</a></div></div>'; return; }
   const s = db.settings;
   const asOf = customerAsOf || today();
-  const { terms, sum, rows } = statementData(c, asOf);
+  const { terms, sum, rows, months } = statementData(c, asOf);
   const limit = Number(c.creditLimit) || 0;
   const wa = waNumber(c.mobile);
 
-  const ledgerRows = rows.map(({ e, balance, days, interest }) => {
+  const ledgerRow = ({ e, balance, days, interest }) => {
     const isSale = e.type === TYPES.UDHAR;
     return `<tr>
       <td>${fmtDate(e.date)}</td>
@@ -466,6 +475,38 @@ function pageCustomer(id) {
       <td class="num ${interest < 0 ? 'text-ok' : 'text-danger'}">${interest ? (interest < 0 ? '− ' : '+ ') + money(Math.abs(interest)) : ''}</td>
       <td class="no-print"><button class="icon-btn" title="Edit" data-edit="${e.id}">✎</button><button class="icon-btn" title="Delete" data-del="${e.id}">🗑</button></td>
     </tr>`;
+  };
+  const rowsByMonth = (ym) => rows.filter((r) => r.e.date.slice(0, 7) === ym);
+  if (!openMonths.has(c.id) && months.length) openMonths.set(c.id, new Set([months[months.length - 1].month]));
+  const open = openMonths.get(c.id) || new Set();
+  const cell = (label, value, cls = '') => `<span class="m-cell ${cls}"><small>${label}</small>${value}</span>`;
+  const monthsHtml = months.map((m) => {
+    const list = rowsByMonth(m.month);
+    return `<details class="month" data-month="${m.month}" ${open.has(m.month) ? 'open' : ''}>
+      <summary>
+        <span class="m-name">${monthName(m.month)}<small>${list.length} ${list.length === 1 ? 'entry' : 'entries'}</small></span>
+        ${cell('Sales', money(m.sales), 'text-danger')}
+        ${cell('Payments', money(m.payments), 'text-ok')}
+        ${cell('Interest', money(m.interest), 'text-warn')}
+        ${cell('Closing balance', money(m.closingBalance))}
+        ${cell('Total due', money(m.totalDue), 'strong')}
+      </summary>
+      <div class="month-strip">
+        <span>Opening balance <b>${money(m.openingBalance)}</b></span>
+        <span>+ Sales <b>${money(m.sales)}</b></span>
+        <span>− Payments <b>${money(m.payments)}</b></span>
+        <span>= Closing balance <b>${money(m.closingBalance)}</b></span>
+        <span>Interest this month <b>${money(m.interest)}</b></span>
+        ${m.interestPaid ? `<span>Interest paid <b>${money(m.interestPaid)}</b></span>` : ''}
+        ${m.interestWaived ? `<span>Interest waived <b>${money(m.interestWaived)}</b></span>` : ''}
+        <span>Interest due at month end <b>${money(m.interestDue)}</b></span>
+        <span>Total due at month end <b>${money(m.totalDue)}</b></span>
+      </div>
+      ${list.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Date</th><th>Type</th><th>Details</th><th class="num">Sale (+)</th><th class="num">Payment (−)</th><th class="num">Balance</th><th class="num">Days</th><th class="num">Interest till ${fmtDate(asOf)}</th><th class="no-print"></th></tr></thead>
+        <tbody>${list.map(ledgerRow).join('')}</tbody>
+      </table></div>` : '<div class="empty small">No entries this month. Interest is on the balance carried forward.</div>'}
+    </details>`;
   }).join('');
 
   const lotRows = (sum.lots || []).map((l) => {
@@ -526,11 +567,20 @@ function pageCustomer(id) {
           <input type="date" id="asof" value="${asOf}" style="width:auto">
         </div>
       </div>
-      ${customerTab === 'ledger' ? (rows.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>Date</th><th>Type</th><th>Details</th><th class="num">Sale (+)</th><th class="num">Payment (−)</th><th class="num">Balance</th><th class="num">Days</th><th class="num">Interest</th><th class="no-print"></th></tr></thead>
-        <tbody>${ledgerRows}</tbody>
-        <tfoot><tr><td colspan="3">Total</td><td class="num">${money(sum.totalUdhar)}</td><td class="num">${money(sum.totalJama)}</td><td class="num">${money(sum.principalDue)}</td><td></td><td class="num">${money(sum.interestDue)}</td><td class="no-print"></td></tr></tfoot>
-        </table></div>
+      ${customerTab === 'ledger' ? (rows.length ? `
+        <div class="month-tools no-print">
+          <span class="small muted">Month-wise ledger. Click a month to open or close it.</span>
+          <span><button class="btn small" data-months="open">Open all</button> <button class="btn small" data-months="close">Close all</button></span>
+        </div>
+        <div class="months">${monthsHtml}</div>
+        <div class="months-total">
+          <span class="m-name">All months</span>
+          ${cell('Sales', money(sum.totalUdhar), 'text-danger')}
+          ${cell('Payments', money(sum.totalJama), 'text-ok')}
+          ${cell('Interest', money(sum.interestAccrued), 'text-warn')}
+          ${cell('Balance', money(sum.principalDue))}
+          ${cell('Total due', money(sum.totalDue), 'strong')}
+        </div>
         ${summaryBox(sum, asOf)}` : '<div class="empty">No entries yet. Click "+ Credit sale" or "+ Payment".</div>')
       : sum.method === METHODS.KHATA ? khataHtml(sum, terms, asOf)
       : (sum.lots.length ? `<div class="panel-body small muted">Each credit sale is interest-free for ${esc(terms.graceDays)} days, then charged ${esc(terms.ratePerYear)}% per year (simple interest). Payments clear the oldest sale first, and interest stops on the part that is paid.</div>
@@ -560,6 +610,20 @@ function pageCustomer(id) {
       toast('Customer deleted');
       location.hash = '#/customers';
     }
+  });
+  app.querySelectorAll('details.month').forEach((d) => {
+    d.addEventListener('toggle', () => {
+      const set = openMonths.get(c.id) || new Set();
+      if (d.open) set.add(d.dataset.month); else set.delete(d.dataset.month);
+      openMonths.set(c.id, set);
+    });
+  });
+  app.querySelectorAll('[data-months]').forEach((b) => {
+    b.onclick = () => {
+      const openAll = b.dataset.months === 'open';
+      openMonths.set(c.id, new Set(openAll ? months.map((m) => m.month) : []));
+      app.querySelectorAll('details.month').forEach((d) => { d.open = openAll; });
+    };
   });
   app.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => { customerTab = b.dataset.tab; render(); }; });
   app.querySelector('#asof').onchange = (ev) => { customerAsOf = ev.target.value || null; render(); };

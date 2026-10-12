@@ -187,3 +187,70 @@ export function computeAccount(entries, { method = METHODS.KHATA, ratePerYear, g
     oldestPendingDays: age.oldestPendingDays,
   };
 }
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const nextMonth = (ym) => {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${pad2(m + 1)}`;
+};
+
+// Month-by-month view of an account: sales, payments, balances and the
+// interest that built up during each month (on the selected method), up to `asOf`.
+// Monthly interest is adjusted by a few paise in the last month so the months
+// add up exactly to the account's total interest.
+export function monthlyBreakdown(entries, { method = METHODS.KHATA, ratePerYear, graceDays, asOf }) {
+  const account = computeAccount(entries, { method, ratePerYear, graceDays, asOf });
+  const dailyRate = (Number(ratePerYear) || 0) / 100 / 365;
+  const end = dayNumber(asOf);
+
+  // Interest-bearing amounts as [amount, fromDay, toDay): interest runs on `amount` for each day in range.
+  const spans = [];
+  if (account.method === METHODS.FIFO) {
+    for (const lot of account.lots) {
+      for (const p of lot.payments) {
+        if (p.days > 0) spans.push([p.amount, dayNumber(p.date) - p.days, dayNumber(p.date)]);
+      }
+      if (lot.remaining > 0 && lot.pendingDays > 0) spans.push([lot.remaining, end - lot.pendingDays, end]);
+    }
+  } else {
+    for (const r of account.udharRows) spans.push([r.amount, dayNumber(r.date), end]);
+    for (const r of account.jamaRows) spans.push([-r.amount, dayNumber(r.date), end]);
+  }
+
+  const sorted = sortEntries(entries.filter((x) => x.date <= asOf));
+  if (!sorted.length) return { account, months: [] };
+
+  const months = [];
+  let principal = 0;
+  let interestDue = 0;
+  for (let ym = sorted[0].date.slice(0, 7); ym <= asOf.slice(0, 7); ym = nextMonth(ym)) {
+    const from = dayNumber(`${ym}-01`);
+    const to = Math.min(dayNumber(`${nextMonth(ym)}-01`), end);
+    const list = sorted.filter((e) => e.date.slice(0, 7) === ym);
+    const total = (type) => round2(list.filter((e) => e.type === type).reduce((s, e) => s + (Number(e.amount) || 0), 0));
+    const sales = total(TYPES.UDHAR);
+    const payments = total(TYPES.JAMA);
+    const interestPaid = total(TYPES.BYAAJ_JAMA);
+    const interestWaived = total(TYPES.BYAAJ_MAAF);
+    const interest = spans.reduce((s, [amount, a, b]) => s + amount * dailyRate * Math.max(0, Math.min(b, to) - Math.max(a, from)), 0);
+    months.push({
+      month: ym,
+      entries: list,
+      openingBalance: round2(principal),
+      sales, payments, interestPaid, interestWaived,
+      interest: round2(interest),
+      closingBalance: round2(principal + sales - payments),
+    });
+    principal += sales - payments;
+  }
+
+  const diff = round2(account.interestAccrued - months.reduce((s, m) => s + m.interest, 0));
+  if (diff) months[months.length - 1].interest = round2(months[months.length - 1].interest + diff);
+
+  for (const m of months) {
+    interestDue += m.interest - m.interestPaid - m.interestWaived;
+    m.interestDue = round2(interestDue);
+    m.totalDue = round2(m.closingBalance + m.interestDue);
+  }
+  return { account, months };
+}

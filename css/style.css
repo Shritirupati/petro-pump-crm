@@ -200,3 +200,40 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 24
 @media print {
   .summary-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* Month-wise ledger */
+.month-tools { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.months { display: flex; flex-direction: column; }
+.month { border-bottom: 1px solid var(--border); }
+.month > summary, .months-total {
+  display: grid; grid-template-columns: 1.4fr repeat(5, 1fr); gap: 8px; align-items: center;
+  padding: 12px 14px 12px 34px; cursor: pointer; list-style: none; position: relative; font-variant-numeric: tabular-nums;
+}
+.month > summary::-webkit-details-marker { display: none; }
+.month > summary::before {
+  content: '▸'; position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  color: var(--muted); transition: transform .15s;
+}
+.month[open] > summary::before { transform: translateY(-50%) rotate(90deg); }
+.month > summary:hover { background: var(--primary-soft); }
+.month[open] > summary { background: #f6faf8; border-bottom: 1px solid var(--border); }
+.m-name { font-weight: 700; display: flex; flex-direction: column; }
+.m-name small { font-weight: 400; color: var(--muted); font-size: .78rem; }
+.m-cell { display: flex; flex-direction: column; text-align: right; font-weight: 600; }
+.m-cell small { font-weight: 400; color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; }
+.m-cell.strong { font-weight: 800; }
+.text-warn { color: var(--warn); }
+.month-strip { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 10px 14px; font-size: .85rem; color: var(--muted); background: #fafbfa; border-bottom: 1px solid var(--border); }
+.month-strip b { color: var(--text); }
+.months-total { cursor: default; background: #fafbfa; border-bottom: 1px solid var(--border); }
+
+@media (max-width: 640px) {
+  .month > summary, .months-total { grid-template-columns: 1fr 1fr; padding-left: 30px; }
+  .m-name { grid-column: 1 / -1; }
+  .m-cell { text-align: left; }
+}
+@media print {
+  .month > summary::before { display: none; }
+  .month > summary, .months-total { padding-left: 14px; }
+  .month { break-inside: auto; }
+}
