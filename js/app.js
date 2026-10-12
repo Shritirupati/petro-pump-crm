@@ -1,8 +1,8 @@
 // Bump ?v= here and in index.html on every release so browsers load the new files.
-import { db, FUELS, PAY_MODES } from './store.js?v=2026-10-12b';
-import { computeAccount, sortEntries, round2, TYPES, METHODS } from './interest.js?v=2026-10-12b';
-import { buildStatementPdf } from './pdf.js?v=2026-10-12b';
-import { DEMO_CUSTOMER, DEMO_ENTRIES, DEMO_RATE } from './demo-data.js?v=2026-10-12b';
+import { db, FUELS, PAY_MODES } from './store.js?v=2026-10-12c';
+import { computeAccount, sortEntries, round2, TYPES, METHODS } from './interest.js?v=2026-10-12c';
+import { buildStatementPdf } from './pdf.js?v=2026-10-12c';
+import { DEMO_CUSTOMER, DEMO_ENTRIES, DEMO_RATE } from './demo-data.js?v=2026-10-12c';
 
 const app = document.getElementById('app');
 const modal = document.getElementById('modal');
