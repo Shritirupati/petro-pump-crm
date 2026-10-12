@@ -1,6 +1,8 @@
-import { db, FUELS, PAY_MODES } from './store.js';
-import { computeAccount, sortEntries, round2, TYPES, METHODS } from './interest.js';
-import { buildStatementPdf } from './pdf.js';
+// Bump ?v= here and in index.html on every release so browsers load the new files.
+import { db, FUELS, PAY_MODES } from './store.js?v=2026-10-12b';
+import { computeAccount, sortEntries, round2, TYPES, METHODS } from './interest.js?v=2026-10-12b';
+import { buildStatementPdf } from './pdf.js?v=2026-10-12b';
+import { DEMO_CUSTOMER, DEMO_ENTRIES, DEMO_RATE } from './demo-data.js?v=2026-10-12b';
 
 const app = document.getElementById('app');
 const modal = document.getElementById('modal');
@@ -20,11 +22,6 @@ const money = (n) => {
 function today() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-function shiftDate(iso, days) {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
 }
 const fmtDate = (iso) => (iso ? iso.split('-').reverse().join('-') : '');
 
@@ -720,29 +717,13 @@ function exportCsv() {
 
 function loadDemo() {
   if (db.customers.length && !confirm('Demo data will be added alongside your current data. Continue?')) return;
-  const t = today();
-  const d = (n) => shiftDate(t, -n);
-  const demo = [
-    { name: 'Sharma Transport', mobile: '9876543210', vehicle: 'MP09 HG 4521, MP09 HG 4522', address: 'Transport Nagar', creditLimit: 150000,
-      entries: [['udhar', 120, 'Diesel', 400, 87.6], ['udhar', 95, 'Diesel', 350, 87.6], ['jama', 70, 30000], ['udhar', 40, 'Diesel', 500, 88.1], ['udhar', 10, 'Diesel', 200, 88.1]] },
-    { name: 'Ramesh Kumar (Tractor)', mobile: '9123456780', vehicle: 'MP13 T 7788', address: 'Gram Palasia',
-      entries: [['udhar', 75, 'Diesel', 60, 87.6], ['udhar', 50, 'Diesel', 45, 88.1], ['jama', 20, 3000]] },
-    { name: 'Gupta Kirana Store', mobile: '9988776655', vehicle: 'MP09 ZX 1010', ratePerYear: 18,
-      entries: [['udhar', 25, 'Petrol', 20, 106.4], ['udhar', 12, 'Petrol', 15, 106.4]] },
-    { name: 'City School Bus', mobile: '9000011111', vehicle: 'MP09 PA 2020', graceDays: 15,
-      entries: [['udhar', 65, 'Diesel', 150, 87.6], ['jama', 30, 13140], ['byaaj_jama', 30, 175], ['udhar', 8, 'Diesel', 120, 88.1]] },
-  ];
-  const partyA = db.upsertCustomer({ name: 'Party A', mobile: '9811122233', vehicle: 'MP09 AA 0001' });
-  db.addEntry({ customerId: partyA, type: 'udhar', date: '2026-09-07', fuel: 'Engine Oil', amount: 50000, note: 'Oil' });
-  db.addEntry({ customerId: partyA, type: 'jama', date: '2026-09-17', amount: 5000, mode: 'Cash' });
-  for (const { entries, ...c } of demo) {
-    const id = db.upsertCustomer(c);
-    for (const [type, ago, a, b, cc] of entries) {
-      if (type === 'udhar') db.addEntry({ customerId: id, type, date: d(ago), fuel: a, qty: b, rate: cc, amount: round2(b * cc), vehicle: c.vehicle.split(',')[0] });
-      else db.addEntry({ customerId: id, type, date: d(ago), amount: a, mode: 'Cash' });
-    }
+  const id = db.upsertCustomer({ ...DEMO_CUSTOMER });
+  for (const [date, type, amount, vehicle, qty, note] of DEMO_ENTRIES) {
+    if (type === TYPES.UDHAR) db.addEntry({ customerId: id, type, date, fuel: 'Diesel', qty: qty || '', rate: DEMO_RATE, amount, vehicle, note });
+    else db.addEntry({ customerId: id, type, date, amount, mode: 'Cash' });
   }
   toast('Demo data loaded');
+  location.hash = `#/customer/${id}`;
   render();
 }
 
