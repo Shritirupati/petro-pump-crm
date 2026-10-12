@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeLedger, computeKhata, computeAccount, monthlyBreakdown, daysBetween } from '../js/interest.js';
+import { computeLedger, computeKhata, computeAccount, monthlyBreakdown, daysBetween } from '../public/js/interest.js';
 
 const opts = (asOf, extra = {}) => ({ ratePerYear: 24, graceDays: 30, asOf, ...extra });
 let n = 0;

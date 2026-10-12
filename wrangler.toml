@@ -1,0 +1,16 @@
+# Cloudflare Worker that serves the app (public/) and its API (/api/*).
+name = "petrol-pump-crm"
+main = "worker/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "none"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "petrol-pump-crm"
+database_id = "REPLACE_WITH_DATABASE_ID"   # filled in by deploy.mjs
+migrations_dir = "migrations"

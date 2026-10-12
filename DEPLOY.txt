@@ -1,59 +1,70 @@
-PETROL PUMP CRM - FIREBASE PAR DEPLOY KAISE KAREIN
-===================================================
+PETROL PUMP CRM - CLOUDFLARE PAR DEPLOY KAISE KAREIN
+====================================================
 
 EK BAAR KA SETUP (sirf pehli baar)
 ----------------------------------
-1. Computer par Node.js install karo:
-   https://nodejs.org  ->  "LTS" wala download karo  ->  Next, Next, Finish.
+1. Cloudflare account banao (free):
+   https://dash.cloudflare.com/sign-up   -> email + password -> email verify karo.
+   Login ke baad left menu mein "Workers & Pages" kholo ek baar.
+   (Agar wahan "workers.dev subdomain" ka naam maange to koi naam do,
+    jaise  ranapump  - yahi link mein aayega.)
 
-2. Ye ZIP file kisi folder mein extract (unzip) karo, jaise:
-   Desktop\petrol-pump-crm
+2. Computer par Node.js install hona chahiye (nodejs.org, LTS). Ho chuka hai.
 
-3. Us folder ko kholo. Upar address bar mein  cmd  likh kar Enter dabao.
-   (Mac par: Terminal kholo aur  cd  likh kar folder ko Terminal mein drag karo, Enter.)
+3. Ye ZIP extract karo. Andar "petrol-pump-crm" folder kholo
+   (jisme package.json, wrangler.toml, public, worker folder dikhte hain).
 
-4. Ye command chalao (sirf pehli baar):
-      npm install -g firebase-tools
+4. Address bar mein  cmd  likh kar Enter. Kaali window mein:
 
-5. Login karo (wahi Gmail jisse Firebase project banaya hai):
-      firebase login
-   Browser khulega -> Gmail chuno -> Allow.
+      npm install
+   (1-2 minute, "added ... packages" aayega)
+
+      npx wrangler login
+   (browser khulega -> Cloudflare account se login -> "Allow")
 
 HAR BAAR DEPLOY (pehli baar aur har update par)
 -----------------------------------------------
-6. Isi folder mein ye command chalao:
-      firebase deploy
+5. Isi folder mein:
 
-   Ye do kaam karega:
-   - Database ke security rules lagayega (kaun kya dekh/badal sakta hai)
-   - App ko website par chadhayega
+      npm run deploy
 
-7. Aakhir mein ek link aayega, jaise:
-      Hosting URL: https://petrol-pump-crm.web.app
+   Ye apne-aap:
+   - pehli baar database banayega (petrol-pump-crm)
+   - database ki tables banayega / update karega
+   - app ko upload karega
+
+   Pehli baar "Ok to proceed?" ya subdomain ka naam puchhe to  y  likho / naam do.
+
+6. Aakhir mein link aayega, jaise:
+      https://petrol-pump-crm.ranapump.workers.dev
    Yahi app ka link hai.
 
 PEHLI BAAR APP KHOLNE PAR
 -------------------------
-8. Link kholo. "First-time setup" screen aayegi.
-   Pump ka naam, owner ka naam, owner username aur password bharo.
-   Ye screen sirf ek baar aati hai. Isse owner ka login banta hai.
-
-9. Settings -> Users -> "+ Add staff" se staff ke login banao.
+7. Link kholo -> "First-time setup" -> pump ka naam, owner naam,
+   owner username, password. (Pehle hi kaagaz par likh lo!)
+8. Settings -> Users -> "+ Add staff" se staff ke login banao.
 
 DHYAN RAKHEIN
 -------------
-- Firebase console mein Authentication -> Sign-in method -> Email/Password
-  "Enabled" hona chahiye.
-- Owner ka password bhool gaye to (developer kar sakta hai):
-  a) Firebase console -> Authentication -> Users -> Add user
-     Email: naya-naam@users.pumpcrm.app , Password: naya password -> Add.
-     Nayi line ka "User UID" copy karo.
-  b) Firestore Database -> users collection -> Add document
-     Document ID = wahi User UID, fields:
-       username (string) = naya-naam
-       name     (string) = owner ka naam
-       role     (string) = owner
-       active   (boolean) = true
-  Ab owner "naya-naam" username se login kar sakta hai.
-  Owner password surakshit jagah likh kar rakhein.
-- Mahine mein ek baar Settings -> Download backup zaroor karein.
+- Naya computer ho to step 3 aur 4 (npm install, npx wrangler login) dobara.
+- Agle update mein nayi ZIP aaye to us folder mein bas:  npm install  aur  npm run deploy
+  (database ka data waisa hi rehta hai, sirf app badalti hai)
+- wrangler.toml file mein database_id pehli deploy ke baad apne-aap bhar jata hai.
+  Us folder ko sambhal ke rakhna (ya ID ko README mein likh lena).
+
+PASSWORD BHOOL GAYE TO (developer karega)
+-----------------------------------------
+Isi folder mein cmd kholo aur chalao (username aur naya password apna likho):
+
+   npm run reset-password -- owner NayaPassword123
+
+- "owner" ki jagah jis login ka password badalna hai uska username.
+- Purane saare login (sab devices) band ho jayenge, naye password se login karein.
+- Data ko kuch nahi hota.
+
+POORA SETUP DOBARA (SAARA DATA MITEGA - sirf testing mein)
+----------------------------------------------------------
+   npx wrangler d1 execute petrol-pump-crm --remote --command "DELETE FROM users; DELETE FROM sessions; DELETE FROM settings; DELETE FROM customers; DELETE FROM entries;"
+
+Uske baad link kholne par "First-time setup" dobara aayega.

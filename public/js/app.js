@@ -1,10 +1,10 @@
 // Bump ?v= here and in index.html on every release so browsers load the new files.
 import {
-  db, FUELS, PAY_MODES, session, sync, uid, usernameOk, setHandlers, watchAuth, isSetupDone,
-  signIn, signOutUser, createOwner, createStaff, setUserActive, changeMyPassword, verifyPassword,
-} from './store.js?v=2026-10-14';
-import { computeAccount, monthlyBreakdown, sortEntries, round2, TYPES, METHODS } from './interest.js?v=2026-10-14';
-import { buildStatementPdf } from './pdf.js?v=2026-10-14';
+  db, FUELS, PAY_MODES, session, sync, usernameOk, setHandlers, watchAuth, getStatus,
+  signIn, signOutUser, createOwner, createStaff, setUserActive, changeMyPassword,
+} from './store.js?v=2026-10-15';
+import { computeAccount, monthlyBreakdown, sortEntries, round2, TYPES, METHODS } from './interest.js?v=2026-10-15';
+import { buildStatementPdf } from './pdf.js?v=2026-10-15';
 
 const app = document.getElementById('app');
 const modal = document.getElementById('modal');
@@ -610,8 +610,8 @@ function pageCustomer(id) {
   on('delete-customer', () => confirmWithPassword({
     title: `Delete ${c.name}`,
     warning: `Delete "${c.name}" and all ${db.entriesFor(c.id).length} entries? This cannot be undone.`,
-    action: () => {
-      db.deleteCustomer(c.id);
+    action: async (password) => {
+      await db.deleteCustomer(c.id, password);
       toast('Customer deleted');
       location.hash = '#/customers';
     },
@@ -748,7 +748,7 @@ function pageSettings() {
           <td>${esc(u.name)}</td><td>${esc(u.username)}</td>
           <td>${u.role === 'owner' ? '<span class="badge jama">Owner</span>' : 'Staff'}</td>
           <td>${u.active ? '<span class="text-ok">Active</span>' : '<span class="text-danger">Disabled</span>'}</td>
-          <td class="num">${u.role === 'owner' ? '' : `<button class="btn small" data-user="${u.uid}" data-active="${u.active ? '0' : '1'}">${u.active ? 'Disable' : 'Enable'}</button>`}</td>
+          <td class="num">${u.role === 'owner' ? '' : `<button class="btn small" data-user="${u.id}" data-active="${u.active ? '0' : '1'}">${u.active ? 'Disable' : 'Enable'}</button>`}</td>
         </tr>`).join('')}</tbody>
       </table></div>
       <div class="panel-body small muted">Staff can view customers, add credit sales and payments, and share statements. Only the owner can edit or delete entries, delete customers, change settings and manage users.
@@ -787,7 +787,7 @@ function pageSettings() {
     </div>` : ''}`;
 
   const on = (act, fn) => { const el = app.querySelector(`[data-act=${act}]`); if (el) el.onclick = fn; };
-  on('sign-out', () => signOutUser());
+  on('sign-out', () => document.getElementById('sign-out').click());
   on('change-password', passwordForm);
   if (!owner) return;
 
@@ -800,10 +800,10 @@ function pageSettings() {
   on('add-user', staffForm);
   app.querySelectorAll('[data-user]').forEach((b) => {
     b.onclick = () => {
-      const u = db.users.find((x) => x.uid === b.dataset.user);
+      const u = db.users.find((x) => x.id === b.dataset.user);
       const enable = b.dataset.active === '1';
       if (enable || confirm(`Disable the login "${u.username}"? They will be signed out and cannot sign in again until enabled.`)) {
-        setUserActive(u.uid, enable);
+        setUserActive(u.id, enable);
         toast(enable ? 'Login enabled' : 'Login disabled');
       }
     };
@@ -823,9 +823,9 @@ function pageSettings() {
   on('reset', () => confirmWithPassword({
     title: 'Erase all data',
     warning: `All ${db.customers.length} customers and ${db.entries.length} entries will be permanently deleted for every user. Have you downloaded a backup?`,
-    action: async () => {
-      toast('Erasing…', 10000);
-      try { await db.reset(); toast('All data erased'); } catch (err) { alert(`Could not erase: ${err.message}`); }
+    action: async (password) => {
+      await db.reset(password);
+      toast('All data erased');
     },
   }));
   document.getElementById('restore').onchange = async (ev) => {
@@ -836,21 +836,17 @@ function pageSettings() {
     confirmWithPassword({
       title: 'Restore from backup',
       warning: 'All current data (for every user) will be deleted and replaced with the backup. Continue?',
-      action: async () => {
-        toast('Restoring… keep this page open', 20000);
-        try {
-          await db.importJson(text);
-          toast('Data restored from backup');
-        } catch (err) {
-          alert(`Could not restore the backup: ${err.message}`);
-        }
+      action: async (password) => {
+        await db.importJson(text, password);
+        toast('Data restored from backup');
       },
     });
   };
 }
 
 // Deleting data needs two confirmations: a yes/no question, then the owner's
-// password plus typing DELETE.
+// password plus typing DELETE. The server checks the password again before it
+// changes anything; `action(password)` does the work.
 function confirmWithPassword({ title, warning, action }) {
   if (!confirm(`${warning}\n\nStep 1 of 2: click OK to continue.`)) return;
   let busy = false;
@@ -868,13 +864,11 @@ function confirmWithPassword({ title, warning, action }) {
       if (d.word.trim() !== 'DELETE') { err.textContent = 'Please type DELETE in capital letters.'; return false; }
       if (busy) return false;
       busy = true;
-      err.textContent = 'Checking password…';
-      verifyPassword(d.password)
-        .then(() => { modal.close(); action(); })
+      err.textContent = 'Please wait…';
+      Promise.resolve(action(d.password))
+        .then(() => { if (modal.open) modal.close(); })
         .catch((e) => {
-          err.textContent = /wrong-password|invalid-credential/.test(e.code) ? 'Wrong password. Nothing was deleted.'
-            : e.code === 'auth/network-request-failed' ? 'Needs internet to check the password. Nothing was deleted.'
-              : e.code === 'auth/too-many-requests' ? 'Too many attempts. Please wait a few minutes.' : e.message;
+          err.textContent = e.code === 'network' ? 'Needs internet. Nothing was deleted.' : e.message;
         })
         .finally(() => { busy = false; });
       return false;
@@ -899,7 +893,7 @@ function staffForm() {
       if (!usernameOk(username)) { alert('Username can use small letters, numbers, dot and dash (3 to 30 characters).'); return false; }
       createStaff({ name: d.name.trim(), username, password: d.password })
         .then(() => toast(`Login "${username}" created`))
-        .catch((err) => alert(err.code === 'auth/email-already-in-use' ? `The username "${username}" is already taken.` : `Could not create the login: ${err.message}`));
+        .catch((err) => alert(`Could not create the login: ${err.message}`));
     },
   });
 }
@@ -918,7 +912,7 @@ function passwordForm() {
       if (d.next !== d.next2) { alert('The new passwords do not match.'); return false; }
       changeMyPassword(d.current, d.next)
         .then(() => toast('Password changed'))
-        .catch((err) => alert(/wrong-password|invalid-credential/.test(err.code) ? 'The current password is wrong.' : `Could not change the password: ${err.message}`));
+        .catch((err) => alert(err.code === 'wrong-password' ? 'The current password is wrong.' : `Could not change the password: ${err.message}`));
     },
   });
 }
@@ -940,14 +934,15 @@ let setupMode = false;
 
 async function pageSignIn() {
   app.innerHTML = '<div class="auth-card"><p class="muted">Loading…</p></div>';
-  const setupDone = await isSetupDone();
+  const status = await getStatus();
   if (authStatus !== 'signedOut') return;
-  if (setupDone === false) { pageSetup(); return; }
+  if (status && !status.setupDone) { pageSetup(); return; }
+  const setupDone = status ? true : null;
   app.innerHTML = `
     <form class="auth-card" id="login-form">
       <div class="auth-logo" aria-hidden="true">⛽</div>
-      <h1>Sign in</h1>
-      <p class="muted small">Petrol Pump CRM</p>
+      <h1>${esc(status?.pumpName || 'Petrol Pump CRM')}</h1>
+      <p class="muted small">Private credit-ledger app for this petrol pump's owner and staff. Sign in with the username given by the pump owner.</p>
       <div class="field"><label for="l-user">Username</label><input id="l-user" name="username" required autocomplete="username" autocapitalize="none" autofocus></div>
       <div class="field"><label for="l-pass">Password</label><input id="l-pass" name="password" type="password" required autocomplete="current-password"></div>
       <p class="text-danger small" id="l-error" role="alert"></p>
@@ -964,9 +959,7 @@ async function pageSignIn() {
     try {
       await signIn(d.username, d.password);
     } catch (e) {
-      err.textContent = /invalid-credential|wrong-password|user-not-found|invalid-email/.test(e.code) ? 'Wrong username or password.'
-        : e.code === 'auth/network-request-failed' ? 'No internet connection.'
-          : e.code === 'auth/too-many-requests' ? 'Too many attempts. Please wait a few minutes.' : e.message;
+      err.textContent = e.message;
       btn.disabled = false;
     }
   };
@@ -1001,7 +994,7 @@ function pageSetup() {
       await createOwner({ pumpName: d.pumpName.trim(), name: d.name.trim(), username, password: d.password });
       toast('Owner login created');
     } catch (e) {
-      err.textContent = e.code === 'auth/email-already-in-use' ? 'This username is already taken.' : `Setup failed: ${e.message}`;
+      err.textContent = `Setup failed: ${e.message}`;
       ev.target.querySelector('button[type=submit]').disabled = false;
     } finally {
       setupMode = false;
@@ -1096,7 +1089,12 @@ app.addEventListener('click', (ev) => {
   const row = ev.target.closest('tr[data-href]');
   if (row && !ev.target.closest('a, button')) location.hash = row.dataset.href;
 });
-document.getElementById('sign-out').onclick = () => { if (confirm('Sign out?')) signOutUser(); };
+document.getElementById('sign-out').onclick = () => {
+  const msg = sync.pending
+    ? `${sync.pendingCount} change(s) have not reached the server yet and will be lost if you sign out now. Sign out anyway?`
+    : 'Sign out?';
+  if (confirm(msg)) signOutUser();
+};
 
 setHandlers({ change: scheduleRender, error: (msg) => toast(msg, 6000) });
 watchAuth((status) => {

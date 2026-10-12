@@ -47,53 +47,56 @@ Interest = amount × rate% ÷ 365 × days. This equals daily interest on the run
 
 Data saved by older versions (rate per month) is converted automatically: 2% per month becomes 24% per year.
 
-## Hosting, database and logins (Firebase)
+## Hosting, database and logins (Cloudflare)
 
-The app runs on **Firebase Hosting** with data in **Cloud Firestore** and logins through **Firebase Authentication**.
+The app runs on a **Cloudflare Worker** (free plan): it serves the files in `public/` and an API under `/api/`,
+with data in a **Cloudflare D1** (SQLite) database.
 
-- **Logins**: username + password. The first account, made on the one-time setup screen, is the **owner**.
-  The owner adds **staff** logins in Settings → Users and can disable them.
-- **Staff** can view customers, add customers, credit sales and payments, and share statements.
-  Only the owner can edit or delete entries, delete customers, change settings, restore backups or manage users.
-  These rules are enforced by the database (`firestore.rules`), not just hidden in the screens.
-- **Sync**: every signed-in device sees changes live.
-- **Offline**: entries made without internet are saved on the device and upload when the connection returns;
-  the app itself opens offline once it has been loaded (service worker).
+- **Logins**: username + password (PBKDF2-hashed), HttpOnly session cookie for 60 days, and lock-out after
+  8 wrong passwords in 15 minutes. The first account, made on the one-time setup screen, is the **owner**.
+  The owner adds or disables **staff** logins in Settings → Users.
+- **Staff** can view and add customers, add credit sales and payments, and share statements.
+  Only the owner can edit or delete entries, delete customers, change settings, restore or erase data, or manage users.
+  These rules are checked by the server (`worker/index.js`), not just hidden in the screens.
+- **Deleting a customer, erasing or restoring data** needs a yes/no confirmation plus the owner's password and typing DELETE;
+  the server checks the password again.
+- **Sync**: changes reach the server immediately; other devices pick them up within about 15 seconds.
+- **Offline**: the data is kept on the device, so the app opens and works without internet; changes wait in an
+  outbox and upload when the connection returns (header shows "Offline · will sync").
 - **Upgrade from the browser-only version**: on the owner's device, Settings shows "Data found in this browser"
   to upload the old data once.
 
-Project settings are in `js/firebase-config.js` and `.firebaserc`.
-
 ### Deploy
 
-See `DEPLOY.txt`. In short, with Node.js installed:
+See `DEPLOY.txt`. In short, with Node.js installed and a Cloudflare account:
 
 ```bash
-npm install -g firebase-tools
-firebase login
-firebase deploy        # rules + website, prints the https://<project>.web.app link
+npm install
+npx wrangler login
+npm run deploy                                   # creates the D1 database (first time), applies migrations, uploads
+npm run reset-password -- <username> <password>  # if someone forgets a password
 ```
 
 ### Local testing
 
 ```bash
-npm test                                             # interest calculation tests
-firebase emulators:start --only auth,firestore       # local auth + database
-python3 -m http.server 8090                          # then open http://localhost:8090/?emulator
+npm test        # interest calculation tests
+npm run dev     # local database + app at http://localhost:8787
 ```
 
 ## Code
 
 | File | Purpose |
 |---|---|
-| `index.html`, `css/style.css` | Page and styling |
-| `js/app.js` | Screens, forms, WhatsApp sharing |
-| `js/pdf.js` | PDF statement layout |
-| `js/store.js` | Firebase login, live data sync, users, backup/restore |
-| `js/firebase-config.js` | Firebase project settings |
-| `firestore.rules` | Who can read and change what |
-| `firebase.json`, `.firebaserc` | Hosting and deploy settings |
-| `sw.js`, `manifest.webmanifest`, `icon*` | Offline support and install-as-app |
-| `js/interest.js` | Interest calculation (pure functions, tested) |
-| `js/vendor/` | jsPDF 4.2.1, jsPDF-AutoTable 5.0.8 (MIT) and the Firebase JS SDK 13.0.0 (Apache-2.0), bundled |
+| `public/index.html`, `public/css/style.css` | Page and styling |
+| `public/js/app.js` | Screens, forms, WhatsApp sharing |
+| `public/js/pdf.js` | PDF statement layout |
+| `public/js/store.js` | Sign-in, sync with the server, offline outbox, backup/restore |
+| `worker/index.js` | API: logins, sessions, permissions, data |
+| `migrations/` | Database tables |
+| `wrangler.toml` | Cloudflare settings (database id is filled in by the first deploy) |
+| `deploy.mjs`, `reset-password.mjs` | Deploy and password-reset helpers |
+| `public/sw.js`, `public/manifest.webmanifest`, `public/icon*` | Offline support and install-as-app |
+| `public/js/interest.js` | Interest calculation (pure functions, tested) |
+| `public/js/vendor/` | jsPDF 4.2.1 and jsPDF-AutoTable 5.0.8 (MIT) |
 | `tests/interest.test.js` | Interest calculation tests |
