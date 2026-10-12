@@ -1,5 +1,8 @@
 // Bump ?v= here and in index.html on every release so browsers load the new files.
-import { db, FUELS, PAY_MODES } from './store.js?v=2026-10-13';
+import {
+  db, FUELS, PAY_MODES, session, sync, uid, usernameOk, setHandlers, watchAuth, isSetupDone,
+  signIn, signOutUser, createOwner, createStaff, setUserActive, changeMyPassword,
+} from './store.js?v=2026-10-13';
 import { computeAccount, monthlyBreakdown, sortEntries, round2, TYPES, METHODS } from './interest.js?v=2026-10-13';
 import { buildStatementPdf } from './pdf.js?v=2026-10-13';
 import { DEMO_CUSTOMER, DEMO_ENTRIES, DEMO_RATE } from './demo-data.js?v=2026-10-13';
@@ -282,6 +285,7 @@ function entryDetails(e) {
   }
   return [e.mode, e.ref, e.note].filter(Boolean).join(' · ');
 }
+const entryBy = (e) => (e.by ? ` · by ${e.by}` : '');
 
 // ---------- PDF and WhatsApp ----------
 
@@ -362,10 +366,9 @@ function pageDashboard() {
     ${db.customers.length ? '' : `
       <div class="panel"><div class="empty">
         <p><b>No customers yet.</b></p>
-        <p>Add your first customer, or load demo data to try the app.</p>
+        <p>Add your first customer to start.${session.isOwner ? ' To try the app first, use Settings → Load demo data.' : ''}</p>
         <div class="actions" style="justify-content:center">
           <button class="btn primary" data-act="new-customer">+ Add first customer</button>
-          <button class="btn" data-act="demo">Load demo data</button>
         </div>
       </div></div>`}
 
@@ -467,13 +470,13 @@ function pageCustomer(id) {
     return `<tr>
       <td>${fmtDate(e.date)}</td>
       <td><span class="badge ${e.type}">${typeLabel(e.type)}</span></td>
-      <td class="muted">${esc(entryDetails(e))}</td>
+      <td class="muted">${esc(entryDetails(e))}<span class="small">${esc(entryBy(e))}</span></td>
       <td class="num text-danger">${isSale ? money(e.amount) : ''}</td>
       <td class="num text-ok">${!isSale ? money(e.amount) : ''}</td>
       <td class="num"><b>${money(balance)}</b></td>
       <td class="num muted">${days}</td>
       <td class="num ${interest < 0 ? 'text-ok' : 'text-danger'}">${interest ? (interest < 0 ? '− ' : '+ ') + money(Math.abs(interest)) : ''}</td>
-      <td class="no-print"><button class="icon-btn" title="Edit" data-edit="${e.id}">✎</button><button class="icon-btn" title="Delete" data-del="${e.id}">🗑</button></td>
+      <td class="no-print">${session.isOwner ? `<button class="icon-btn" title="Edit" data-edit="${e.id}">✎</button><button class="icon-btn" title="Delete" data-del="${e.id}">🗑</button>` : ''}</td>
     </tr>`;
   };
   const rowsByMonth = (ym) => rows.filter((r) => r.e.date.slice(0, 7) === ym);
@@ -545,7 +548,7 @@ function pageCustomer(id) {
         <button class="btn" data-act="print">Print</button>
         ${wa ? `<a class="btn" target="_blank" rel="noopener" href="https://wa.me/${wa}?text=${encodeURIComponent(reminderText(c, sum, asOf))}">WhatsApp reminder</a>` : ''}
         <button class="btn" data-act="edit-customer">Edit</button>
-        <button class="btn ghost text-danger" data-act="delete-customer">Delete</button>
+        ${session.isOwner ? '<button class="btn ghost text-danger" data-act="delete-customer">Delete</button>' : ''}
       </div>
     </div>
 
@@ -597,7 +600,7 @@ function pageCustomer(id) {
     </div>
     ${c.notes ? `<div class="panel"><div class="panel-body"><b>Notes:</b> ${esc(c.notes)}</div></div>` : ''}`;
 
-  const on = (act, fn) => { app.querySelector(`[data-act=${act}]`).onclick = fn; };
+  const on = (act, fn) => { const el = app.querySelector(`[data-act=${act}]`); if (el) el.onclick = fn; };
   on('sale', () => saleForm(c));
   on('payment', () => paymentForm(c));
   on('wa-pdf', () => sendPdfOnWhatsApp(c, asOf));
@@ -693,12 +696,26 @@ function summaryBox(sum, asOf) {
 
 function pageSettings() {
   const s = db.settings;
+  const owner = session.isOwner;
+  const dis = owner ? '' : 'disabled';
+  const local = owner ? db.localData() : null;
+  const users = [...db.users].sort((a, b) => (a.role === 'owner' ? -1 : 1) - (b.role === 'owner' ? -1 : 1) || a.username.localeCompare(b.username));
   app.innerHTML = `
-    <div class="page-head"><div><h1>Settings</h1><div class="sub">Pump details, interest rules and backup</div></div></div>
+    <div class="page-head"><div><h1>Settings</h1><div class="sub">${owner ? 'Pump details, interest rules, users and backup' : 'Only the owner can change these settings'}</div></div></div>
+
+    ${local ? `
+    <div class="panel highlight">
+      <div class="panel-head"><h2>Data found in this browser</h2></div>
+      <div class="panel-body">
+        <p style="margin-top:0">This browser still has ${local.customers.length} customers and ${local.entries.length} entries from the earlier offline version. Upload them to the online database so they appear on every device.</p>
+        <button class="btn primary" data-act="upload-local">Upload ${local.entries.length} entries</button>
+      </div>
+    </div>` : ''}
 
     <form class="panel" id="settings-form">
       <div class="panel-head"><h2>Pump and interest</h2></div>
       <div class="panel-body">
+        <fieldset ${dis}>
         <div class="field"><label for="s-name">Petrol pump name</label><input id="s-name" name="pumpName" value="${esc(s.pumpName)}"></div>
         <div class="grid2">
           <div class="field"><label for="s-address">Address</label><input id="s-address" name="address" value="${esc(s.address)}"></div>
@@ -715,14 +732,40 @@ function pageSettings() {
           <div class="field"><label for="s-grace">Overdue after (days)</label><input id="s-grace" name="graceDays" type="number" min="0" step="1" required value="${esc(s.graceDays)}">
             <div class="hint">Sales older than this are shown as overdue. In the interest-free method, no interest is charged for these days.</div></div>
         </div>
-        <button class="btn primary" type="submit">Save</button>
+        ${owner ? '<button class="btn primary" type="submit">Save</button>' : ''}
+        </fieldset>
       </div>
     </form>
 
+    ${owner ? `
+    <div class="panel">
+      <div class="panel-head"><h2>Users</h2><button class="btn small primary" data-act="add-user">+ Add staff</button></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th></th></tr></thead>
+        <tbody>${users.map((u) => `<tr>
+          <td>${esc(u.name)}</td><td>${esc(u.username)}</td>
+          <td>${u.role === 'owner' ? '<span class="badge jama">Owner</span>' : 'Staff'}</td>
+          <td>${u.active ? '<span class="text-ok">Active</span>' : '<span class="text-danger">Disabled</span>'}</td>
+          <td class="num">${u.role === 'owner' ? '' : `<button class="btn small" data-user="${u.uid}" data-active="${u.active ? '0' : '1'}">${u.active ? 'Disable' : 'Enable'}</button>`}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+      <div class="panel-body small muted">Staff can view customers, add credit sales and payments, and share statements. Only the owner can edit or delete entries, delete customers, change settings and manage users.
+        If a staff member forgets their password, disable that login and add a new one.</div>
+    </div>` : ''}
+
+    <div class="panel">
+      <div class="panel-head"><h2>My account</h2></div>
+      <div class="panel-body">
+        <p style="margin-top:0">Signed in as <b>${esc(session.profile?.name)}</b> · username <b>${esc(session.username)}</b> · ${owner ? 'Owner' : 'Staff'}</p>
+        <div class="actions"><button class="btn" data-act="change-password">Change password</button><button class="btn" data-act="sign-out">Sign out</button></div>
+      </div>
+    </div>
+
+    ${owner ? `
     <div class="panel">
       <div class="panel-head"><h2>Backup</h2></div>
       <div class="panel-body">
-        <p class="small muted" style="margin-top:0">All data is stored only in this browser on this device. Clearing browser data will erase it, so <b>download a backup daily or weekly</b> and keep it on Google Drive or a pen drive.</p>
+        <p class="small muted" style="margin-top:0">Data is saved online and syncs to every signed-in device. As extra safety, download a backup once a month and keep it on Google Drive or a pen drive.</p>
         <div class="actions">
           <button class="btn primary" data-act="backup">Download backup (.json)</button>
           <label class="btn" style="margin:0;color:var(--text);font-size:inherit">Restore from backup<input type="file" id="restore" accept=".json,application/json" hidden></label>
@@ -733,71 +776,253 @@ function pageSettings() {
 
     <div class="panel">
       <div class="panel-head"><h2>Demo / Reset</h2></div>
-      <div class="panel-body actions">
-        <button class="btn" data-act="demo">Load demo data</button>
-        <button class="btn danger" data-act="reset">Erase all data</button>
+      <div class="panel-body">
+        <p class="small muted" style="margin-top:0">Demo data is added to the real online data. Use it only for testing, then delete the demo customer.</p>
+        <div class="actions">
+          <button class="btn" data-act="demo">Load demo data</button>
+          <button class="btn danger" data-act="reset">Erase all data</button>
+        </div>
       </div>
-    </div>`;
+    </div>` : ''}`;
+
+  const on = (act, fn) => { const el = app.querySelector(`[data-act=${act}]`); if (el) el.onclick = fn; };
+  on('sign-out', () => signOutUser());
+  on('change-password', passwordForm);
+  if (!owner) return;
 
   document.getElementById('settings-form').onsubmit = (ev) => {
     ev.preventDefault();
     const d = Object.fromEntries(new FormData(ev.target).entries());
     db.updateSettings({ ...d, ratePerYear: Number(d.ratePerYear), graceDays: Number(d.graceDays) });
     toast('Settings saved');
-    render();
   };
-  app.querySelector('[data-act=backup]').onclick = () => download(`petrol-pump-backup-${today()}.json`, db.exportJson(), 'application/json');
-  app.querySelector('[data-act=csv]').onclick = exportCsv;
-  app.querySelector('[data-act=reset]').onclick = () => {
-    if (confirm('All customers and entries will be permanently deleted. Have you downloaded a backup?') && confirm('Are you sure? This cannot be undone.')) {
-      db.reset();
-      toast('All data erased');
+  on('add-user', staffForm);
+  app.querySelectorAll('[data-user]').forEach((b) => {
+    b.onclick = () => {
+      const u = db.users.find((x) => x.uid === b.dataset.user);
+      const enable = b.dataset.active === '1';
+      if (enable || confirm(`Disable the login "${u.username}"? They will be signed out and cannot sign in again until enabled.`)) {
+        setUserActive(u.uid, enable);
+        toast(enable ? 'Login enabled' : 'Login disabled');
+      }
+    };
+  });
+  on('upload-local', async () => {
+    toast('Uploading…', 10000);
+    try {
+      const n = await db.uploadLocalData();
+      toast(`${n} entries uploaded`);
       render();
+    } catch (err) {
+      alert(`Upload failed: ${err.message}. Please check the internet connection and try again.`);
     }
-  };
+  });
+  on('backup', () => download(`petrol-pump-backup-${today()}.json`, db.exportJson(), 'application/json'));
+  on('csv', exportCsv);
+  on('demo', loadDemo);
+  on('reset', async () => {
+    if (confirm('All customers and entries will be permanently deleted for every user. Have you downloaded a backup?') && confirm('Are you sure? This cannot be undone.')) {
+      toast('Erasing…', 10000);
+      try { await db.reset(); toast('All data erased'); } catch (err) { alert(`Could not erase: ${err.message}`); }
+    }
+  });
   document.getElementById('restore').onchange = async (ev) => {
     const file = ev.target.files[0];
     if (!file) return;
-    if (!confirm('This will replace the current data with the backup. Continue?')) return;
+    if (!confirm('This will replace all current data (for every user) with the backup. Continue?')) return;
+    toast('Restoring… keep this page open', 20000);
     try {
-      db.importJson(await file.text());
+      await db.importJson(await file.text());
       toast('Data restored from backup');
-      render();
     } catch (err) {
-      alert(`Could not open the backup: ${err.message}`);
+      alert(`Could not restore the backup: ${err.message}`);
     }
   };
 }
 
+function staffForm() {
+  openModal({
+    title: 'Add staff login',
+    submitLabel: 'Create login',
+    body: `
+      <div class="field"><label for="u-name">Name *</label><input id="u-name" name="name" required placeholder="e.g. Ramesh"></div>
+      <div class="grid2">
+        <div class="field"><label for="u-username">Username *</label><input id="u-username" name="username" required autocomplete="off" autocapitalize="none" placeholder="e.g. ramesh">
+          <div class="hint">Small letters, numbers, dot, dash. At least 3 characters.</div></div>
+        <div class="field"><label for="u-pass">Password *</label><input id="u-pass" name="password" required minlength="6" autocomplete="new-password">
+          <div class="hint">At least 6 characters. Share it with the staff member.</div></div>
+      </div>`,
+    onSubmit(d) {
+      const username = d.username.trim().toLowerCase();
+      if (!usernameOk(username)) { alert('Username can use small letters, numbers, dot and dash (3 to 30 characters).'); return false; }
+      createStaff({ name: d.name.trim(), username, password: d.password })
+        .then(() => toast(`Login "${username}" created`))
+        .catch((err) => alert(err.code === 'auth/email-already-in-use' ? `The username "${username}" is already taken.` : `Could not create the login: ${err.message}`));
+    },
+  });
+}
+
+function passwordForm() {
+  openModal({
+    title: 'Change password',
+    submitLabel: 'Change password',
+    body: `
+      <div class="field"><label for="p-cur">Current password</label><input id="p-cur" name="current" type="password" required autocomplete="current-password"></div>
+      <div class="grid2">
+        <div class="field"><label for="p-new">New password</label><input id="p-new" name="next" type="password" required minlength="6" autocomplete="new-password"></div>
+        <div class="field"><label for="p-new2">Repeat new password</label><input id="p-new2" name="next2" type="password" required minlength="6" autocomplete="new-password"></div>
+      </div>`,
+    onSubmit(d) {
+      if (d.next !== d.next2) { alert('The new passwords do not match.'); return false; }
+      changeMyPassword(d.current, d.next)
+        .then(() => toast('Password changed'))
+        .catch((err) => alert(/wrong-password|invalid-credential/.test(err.code) ? 'The current password is wrong.' : `Could not change the password: ${err.message}`));
+    },
+  });
+}
+
 function exportCsv() {
-  const head = ['Date', 'Customer', 'Mobile', 'Type', 'Item', 'Litres', 'Rate', 'Amount', 'Vehicle', 'Bill No', 'Mode', 'Reference', 'Note'];
+  const head = ['Date', 'Customer', 'Mobile', 'Type', 'Item', 'Litres', 'Rate', 'Amount', 'Vehicle', 'Bill No', 'Mode', 'Reference', 'Note', 'Entered by'];
   const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = sortEntries(db.entries).map((e) => {
     const c = db.customer(e.customerId) || {};
-    return [fmtDate(e.date), c.name, c.mobile, typeLabel(e.type), e.fuel, e.qty, e.rate, e.amount, e.vehicle, e.billNo, e.mode, e.ref, e.note].map(cell).join(',');
+    return [fmtDate(e.date), c.name, c.mobile, typeLabel(e.type), e.fuel, e.qty, e.rate, e.amount, e.vehicle, e.billNo, e.mode, e.ref, e.note, e.by].map(cell).join(',');
   });
   download(`petrol-pump-entries-${today()}.csv`, '﻿' + [head.map(cell).join(','), ...lines].join('\r\n'), 'text/csv');
 }
 
-function loadDemo() {
-  if (db.customers.length && !confirm('Demo data will be added alongside your current data. Continue?')) return;
-  const id = db.upsertCustomer({ ...DEMO_CUSTOMER });
-  for (const [date, type, amount, vehicle, qty, note] of DEMO_ENTRIES) {
-    if (type === TYPES.UDHAR) db.addEntry({ customerId: id, type, date, fuel: 'Diesel', qty: qty || '', rate: DEMO_RATE, amount, vehicle, note });
-    else db.addEntry({ customerId: id, type, date, amount, mode: 'Cash' });
+async function loadDemo() {
+  if (!confirm('Add the demo customer and 45 demo entries to the online data?')) return;
+  const id = uid();
+  const entries = DEMO_ENTRIES.map(([date, type, amount, vehicle, qty, note], i) => (type === TYPES.UDHAR
+    ? { id: `${id}-${i}`, customerId: id, type, date, fuel: 'Diesel', qty: qty || '', rate: DEMO_RATE, amount, vehicle, note, createdAt: i, by: session.username }
+    : { id: `${id}-${i}`, customerId: id, type, date, amount, mode: 'Cash', createdAt: i, by: session.username }));
+  toast('Loading demo data…', 10000);
+  try {
+    await db.addMany([{ ...DEMO_CUSTOMER, id, createdAt: Date.now() }], entries);
+    toast('Demo data loaded');
+    location.hash = `#/customer/${id}`;
+  } catch (err) {
+    alert(`Could not load demo data: ${err.message}`);
   }
-  toast('Demo data loaded');
-  location.hash = `#/customer/${id}`;
-  render();
 }
 
-// ---------- router ----------
+// ---------- sign in ----------
+
+let authStatus = 'loading'; // loading | signedOut | noAccess | ready
+let setupMode = false;
+
+async function pageSignIn() {
+  app.innerHTML = '<div class="auth-card"><p class="muted">Loading…</p></div>';
+  const setupDone = await isSetupDone();
+  if (authStatus !== 'signedOut') return;
+  if (setupDone === false) { pageSetup(); return; }
+  app.innerHTML = `
+    <form class="auth-card" id="login-form">
+      <div class="auth-logo" aria-hidden="true">⛽</div>
+      <h1>Sign in</h1>
+      <p class="muted small">Petrol Pump CRM</p>
+      <div class="field"><label for="l-user">Username</label><input id="l-user" name="username" required autocomplete="username" autocapitalize="none" autofocus></div>
+      <div class="field"><label for="l-pass">Password</label><input id="l-pass" name="password" type="password" required autocomplete="current-password"></div>
+      <p class="text-danger small" id="l-error" role="alert"></p>
+      <button class="btn primary block" type="submit">Sign in</button>
+      ${setupDone === null ? '<p class="hint">No internet connection. Devices that signed in before can still open the app offline.</p>' : ''}
+    </form>`;
+  document.getElementById('login-form').onsubmit = async (ev) => {
+    ev.preventDefault();
+    const d = Object.fromEntries(new FormData(ev.target).entries());
+    const err = document.getElementById('l-error');
+    const btn = ev.target.querySelector('button[type=submit]');
+    err.textContent = '';
+    btn.disabled = true;
+    try {
+      await signIn(d.username, d.password);
+    } catch (e) {
+      err.textContent = /invalid-credential|wrong-password|user-not-found|invalid-email/.test(e.code) ? 'Wrong username or password.'
+        : e.code === 'auth/network-request-failed' ? 'No internet connection.'
+          : e.code === 'auth/too-many-requests' ? 'Too many attempts. Please wait a few minutes.' : e.message;
+      btn.disabled = false;
+    }
+  };
+}
+
+function pageSetup() {
+  app.innerHTML = `
+    <form class="auth-card wide" id="setup-form">
+      <div class="auth-logo" aria-hidden="true">⛽</div>
+      <h1>First-time setup</h1>
+      <p class="muted small">Create the owner login. Only the owner can add staff and change settings. This screen appears only once.</p>
+      <div class="field"><label for="su-pump">Petrol pump name *</label><input id="su-pump" name="pumpName" required></div>
+      <div class="field"><label for="su-name">Owner name *</label><input id="su-name" name="name" required></div>
+      <div class="grid2">
+        <div class="field"><label for="su-user">Owner username *</label><input id="su-user" name="username" required autocomplete="username" autocapitalize="none" placeholder="e.g. owner">
+          <div class="hint">Small letters, numbers, dot, dash.</div></div>
+        <div class="field"><label for="su-pass">Password *</label><input id="su-pass" name="password" type="password" required minlength="6" autocomplete="new-password">
+          <div class="hint">At least 6 characters.</div></div>
+      </div>
+      <p class="text-danger small" id="su-error" role="alert"></p>
+      <button class="btn primary block" type="submit">Create owner login</button>
+    </form>`;
+  document.getElementById('setup-form').onsubmit = async (ev) => {
+    ev.preventDefault();
+    const d = Object.fromEntries(new FormData(ev.target).entries());
+    const err = document.getElementById('su-error');
+    const username = d.username.trim().toLowerCase();
+    if (!usernameOk(username)) { err.textContent = 'Username can use small letters, numbers, dot and dash (3 to 30 characters).'; return; }
+    ev.target.querySelector('button[type=submit]').disabled = true;
+    setupMode = true;
+    try {
+      await createOwner({ pumpName: d.pumpName.trim(), name: d.name.trim(), username, password: d.password });
+      toast('Owner login created');
+    } catch (e) {
+      err.textContent = e.code === 'auth/email-already-in-use' ? 'This username is already taken.' : `Setup failed: ${e.message}`;
+      ev.target.querySelector('button[type=submit]').disabled = false;
+    } finally {
+      setupMode = false;
+      render();
+    }
+  };
+}
+
+function pageNoAccess() {
+  app.innerHTML = `
+    <div class="auth-card">
+      <div class="auth-logo" aria-hidden="true">🔒</div>
+      <h1>No access</h1>
+      <p class="muted">This login is disabled or not set up. Please ask the owner.</p>
+      <button class="btn block" id="na-out">Sign out</button>
+    </div>`;
+  document.getElementById('na-out').onclick = () => signOutUser();
+}
+
+// ---------- header, sync status and router ----------
+
+function renderHeader() {
+  const signedIn = authStatus === 'ready';
+  document.querySelector('.topbar nav').hidden = !signedIn;
+  const userBox = document.getElementById('user-box');
+  userBox.hidden = !signedIn;
+  if (signedIn) {
+    const offline = !navigator.onLine;
+    document.getElementById('sync-status').textContent = offline ? (sync.pending ? 'Offline · will sync' : 'Offline') : (sync.pending ? 'Syncing…' : '');
+    document.getElementById('sync-status').className = `sync ${offline ? 'off' : ''}`;
+    document.getElementById('user-name').textContent = session.profile?.name || session.username;
+  }
+  document.getElementById('pump-name').textContent = (signedIn && db.settings.pumpName) || 'Petrol Pump CRM';
+  document.title = `${(signedIn && db.settings.pumpName) || 'Petrol Pump'} – CRM`;
+}
 
 function render() {
+  renderHeader();
+  if (authStatus === 'loading' || (authStatus === 'ready' && !sync.loaded)) {
+    app.innerHTML = '<div class="auth-card"><p class="muted">Loading…</p></div>';
+    return;
+  }
+  if (authStatus === 'signedOut') { if (!app.querySelector('#login-form, #setup-form')) pageSignIn(); return; }
+  if (authStatus === 'noAccess') { if (!setupMode) pageNoAccess(); return; }
+
   const hash = location.hash || '#/';
   const [, page, id] = hash.split('/');
-  document.getElementById('pump-name').textContent = db.settings.pumpName || 'Petrol Pump CRM';
-  document.title = `${db.settings.pumpName || 'Petrol Pump'} – CRM`;
   const nav = page === 'customer' ? 'customers' : page || 'dashboard';
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === nav));
 
@@ -807,6 +1032,27 @@ function render() {
   else pageDashboard();
 }
 
+// Data from other devices arrives at any time. Don't redraw while someone is typing
+// on the page; redraw once they leave the field.
+let renderQueued = false;
+function scheduleRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => {
+    renderQueued = false;
+    const el = document.activeElement;
+    if (modal.open || (el && app.contains(el) && el.matches('input, select, textarea'))) {
+      renderHeader();
+      app.addEventListener('focusout', () => setTimeout(scheduleRender, 0), { once: true });
+      return;
+    }
+    const y = window.scrollY;
+    render();
+    window.scrollTo(0, y);
+  });
+}
+modal.addEventListener('close', () => scheduleRender());
+
 let lastPage = null;
 window.addEventListener('hashchange', () => {
   const page = location.hash.split('/')[1];
@@ -815,13 +1061,24 @@ window.addEventListener('hashchange', () => {
   render();
   window.scrollTo(0, 0);
 });
+window.addEventListener('online', renderHeader);
+window.addEventListener('offline', renderHeader);
 
 app.addEventListener('click', (ev) => {
   const act = ev.target.closest('[data-act]')?.dataset.act;
   if (act === 'new-customer') customerForm();
-  else if (act === 'demo') loadDemo();
   const row = ev.target.closest('tr[data-href]');
   if (row && !ev.target.closest('a, button')) location.hash = row.dataset.href;
 });
+document.getElementById('sign-out').onclick = () => { if (confirm('Sign out?')) signOutUser(); };
 
+setHandlers({ change: scheduleRender, error: (msg) => toast(msg, 6000) });
+watchAuth((status) => {
+  authStatus = status;
+  render();
+});
 render();
+
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Offline support unavailable', err));
+}

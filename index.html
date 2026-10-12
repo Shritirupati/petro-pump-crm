@@ -5,16 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Petrol Pump CRM</title>
   <meta name="theme-color" content="#0f5132">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="stylesheet" href="css/style.css?v=2026-10-13">
 </head>
 <body>
   <header class="topbar no-print">
     <a href="#/" class="brand"><span class="logo" aria-hidden="true">⛽</span> <span id="pump-name">Petrol Pump CRM</span></a>
-    <nav>
+    <nav hidden>
       <a href="#/" data-nav="dashboard">Dashboard</a>
       <a href="#/customers" data-nav="customers">Customers</a>
       <a href="#/settings" data-nav="settings">Settings</a>
     </nav>
+    <div class="user-box" id="user-box" hidden>
+      <span class="sync" id="sync-status"></span>
+      <span class="user-name" id="user-name"></span>
+      <button class="btn small ghost-light" id="sign-out" type="button">Sign out</button>
+    </div>
   </header>
 
   <main id="app" tabindex="-1"></main>

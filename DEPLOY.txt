@@ -1,0 +1,59 @@
+PETROL PUMP CRM - FIREBASE PAR DEPLOY KAISE KAREIN
+===================================================
+
+EK BAAR KA SETUP (sirf pehli baar)
+----------------------------------
+1. Computer par Node.js install karo:
+   https://nodejs.org  ->  "LTS" wala download karo  ->  Next, Next, Finish.
+
+2. Ye ZIP file kisi folder mein extract (unzip) karo, jaise:
+   Desktop\petro-pump-crm
+
+3. Us folder ko kholo. Upar address bar mein  cmd  likh kar Enter dabao.
+   (Mac par: Terminal kholo aur  cd  likh kar folder ko Terminal mein drag karo, Enter.)
+
+4. Ye command chalao (sirf pehli baar):
+      npm install -g firebase-tools
+
+5. Login karo (wahi Gmail jisse Firebase project banaya hai):
+      firebase login
+   Browser khulega -> Gmail chuno -> Allow.
+
+HAR BAAR DEPLOY (pehli baar aur har update par)
+-----------------------------------------------
+6. Isi folder mein ye command chalao:
+      firebase deploy
+
+   Ye do kaam karega:
+   - Database ke security rules lagayega (kaun kya dekh/badal sakta hai)
+   - App ko website par chadhayega
+
+7. Aakhir mein ek link aayega, jaise:
+      Hosting URL: https://petro-pump-crm.web.app
+   Yahi app ka link hai.
+
+PEHLI BAAR APP KHOLNE PAR
+-------------------------
+8. Link kholo. "First-time setup" screen aayegi.
+   Pump ka naam, owner ka naam, owner username aur password bharo.
+   Ye screen sirf ek baar aati hai. Isse owner ka login banta hai.
+
+9. Settings -> Users -> "+ Add staff" se staff ke login banao.
+
+DHYAN RAKHEIN
+-------------
+- Firebase console mein Authentication -> Sign-in method -> Email/Password
+  "Enabled" hona chahiye.
+- Owner ka password bhool gaye to (developer kar sakta hai):
+  a) Firebase console -> Authentication -> Users -> Add user
+     Email: naya-naam@users.pumpcrm.app , Password: naya password -> Add.
+     Nayi line ka "User UID" copy karo.
+  b) Firestore Database -> users collection -> Add document
+     Document ID = wahi User UID, fields:
+       username (string) = naya-naam
+       name     (string) = owner ka naam
+       role     (string) = owner
+       active   (boolean) = true
+  Ab owner "naya-naam" username se login kar sakta hai.
+  Owner password surakshit jagah likh kar rakhein.
+- Mahine mein ek baar Settings -> Download backup zaroor karein.

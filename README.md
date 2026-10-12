@@ -47,31 +47,40 @@ Interest = amount × rate% ÷ 365 × days. This equals daily interest on the run
 
 Data saved by older versions (rate per month) is converted automatically: 2% per month becomes 24% per year.
 
-## Running
+## Hosting, database and logins (Firebase)
 
-No server or database needed; it is a static website.
+The app runs on **Firebase Hosting** with data in **Cloud Firestore** and logins through **Firebase Authentication**.
+
+- **Logins**: username + password. The first account, made on the one-time setup screen, is the **owner**.
+  The owner adds **staff** logins in Settings → Users and can disable them.
+- **Staff** can view customers, add customers, credit sales and payments, and share statements.
+  Only the owner can edit or delete entries, delete customers, change settings, restore backups or manage users.
+  These rules are enforced by the database (`firestore.rules`), not just hidden in the screens.
+- **Sync**: every signed-in device sees changes live.
+- **Offline**: entries made without internet are saved on the device and upload when the connection returns;
+  the app itself opens offline once it has been loaded (service worker).
+- **Upgrade from the browser-only version**: on the owner's device, Settings shows "Data found in this browser"
+  to upload the old data once.
+
+Project settings are in `js/firebase-config.js` and `.firebaserc`.
+
+### Deploy
+
+See `DEPLOY.txt`. In short, with Node.js installed:
 
 ```bash
-npm start        # open http://localhost:8080
-npm test         # interest calculation tests
+npm install -g firebase-tools
+firebase login
+firebase deploy        # rules + website, prints the https://<project>.web.app link
 ```
 
-Or without Node: run `python3 -m http.server 8080` and open `http://localhost:8080`.
+### Local testing
 
-### Online (GitHub Pages, free)
-
-Repository **Settings → Pages → Branch: `main` / root → Save**. The app will be available at
-`https://<username>.github.io/petro-pump-crm/`.
-
-## Where data is stored (important)
-
-All data is stored in **this browser only** (localStorage):
-
-- It does not sync to other phones or computers.
-- Clearing browser data can erase it.
-- Use **Settings → Download backup** daily or weekly.
-
-For several devices or staff logins, the next step is an online database (e.g. Firebase or Supabase) with login.
+```bash
+npm test                                             # interest calculation tests
+firebase emulators:start --only auth,firestore       # local auth + database
+python3 -m http.server 8090                          # then open http://localhost:8090/?emulator
+```
 
 ## Code
 
@@ -80,7 +89,11 @@ For several devices or staff logins, the next step is an online database (e.g. F
 | `index.html`, `css/style.css` | Page and styling |
 | `js/app.js` | Screens, forms, WhatsApp sharing |
 | `js/pdf.js` | PDF statement layout |
-| `js/store.js` | Saving/loading data, backup, migration |
+| `js/store.js` | Firebase login, live data sync, users, backup/restore |
+| `js/firebase-config.js` | Firebase project settings |
+| `firestore.rules` | Who can read and change what |
+| `firebase.json`, `.firebaserc` | Hosting and deploy settings |
+| `sw.js`, `manifest.webmanifest`, `icon*` | Offline support and install-as-app |
 | `js/interest.js` | Interest calculation (pure functions, tested) |
-| `js/vendor/` | jsPDF 4.2.1 and jsPDF-AutoTable 5.0.8 (MIT licence) |
+| `js/vendor/` | jsPDF 4.2.1, jsPDF-AutoTable 5.0.8 (MIT) and the Firebase JS SDK 13.0.0 (Apache-2.0), bundled |
 | `tests/interest.test.js` | Interest calculation tests |
