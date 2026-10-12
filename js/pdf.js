@@ -16,7 +16,7 @@ const alignRightFrom = (col) => (data) => {
 };
 const GREY = [95, 107, 102];
 
-export function buildStatementPdf({ settings, customer, termsLabel, sum, rows, asOf, fmtDate, typeLabel, details }) {
+export function buildStatementPdf({ settings, customer, termsLabel, sum, rows, months = [], asOf, fmtDate, typeLabel, details, monthName }) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -66,6 +66,30 @@ export function buildStatementPdf({ settings, customer, termsLabel, sum, rows, a
     columnStyles: { 2: { textColor: [180, 35, 24] } },
   });
   y = doc.lastAutoTable.finalY + 6;
+
+  // Month-wise summary
+  if (months.length) {
+    doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(0);
+    doc.text('Month-wise summary', margin, y);
+    window.autoTable(doc, {
+      startY: y + 2,
+      margin: { left: margin, right: margin, bottom: 16 },
+      theme: 'grid',
+      head: [['Month', 'Opening', 'Sales (+)', 'Payments (-)', 'Closing balance', 'Interest', 'Interest due', 'Total due']],
+      body: months.map((m) => [monthName(m.month), amt(m.openingBalance), amt(m.sales), amt(m.payments), amt(m.closingBalance), amt(m.interest), amt(m.interestDue), amt(m.totalDue)]),
+      foot: [['Total', '', amt(sum.totalUdhar), amt(sum.totalJama), amt(sum.principalDue), amt(sum.interestAccrued), amt(sum.interestDue), amt(sum.totalDue)]],
+      showFoot: 'lastPage',
+      styles: { fontSize: 8, cellPadding: 1.6 },
+      headStyles: { fillColor: [227, 241, 234], textColor: GREEN },
+      footStyles: { fillColor: [240, 243, 241], textColor: 0, fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 28 } },
+      didParseCell: alignRightFrom(1),
+    });
+    y = doc.lastAutoTable.finalY + 6;
+    doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(0);
+    doc.text('All entries', margin, y);
+    y += 2;
+  }
 
   // Ledger
   window.autoTable(doc, {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeLedger, computeKhata, computeAccount, daysBetween } from '../js/interest.js';
+import { computeLedger, computeKhata, computeAccount, monthlyBreakdown, daysBetween } from '../js/interest.js';
 
 const opts = (asOf, extra = {}) => ({ ratePerYear: 24, graceDays: 30, asOf, ...extra });
 let n = 0;
@@ -105,4 +105,26 @@ test('computeAccount picks the method and keeps byaaj jama / maaf', () => {
   assert.equal(k.oldestPendingDays, 90);
   const f = computeAccount(entries, { method: 'fifo', ratePerYear: 36.5, graceDays: 30, asOf: '2026-04-01' });
   assert.equal(f.interestDue, 500);
+});
+
+test('monthly breakdown splits interest by calendar month', () => {
+  // 36.5% a year => Rs 10 a day on Rs 10,000
+  const entries = [udhar('2026-01-15', 10000), jama('2026-02-10', 4000)];
+  const { months, account } = monthlyBreakdown(entries, { method: 'khata', ratePerYear: 36.5, graceDays: 0, asOf: '2026-03-10' });
+  assert.deepEqual(months.map((m) => m.month), ['2026-01', '2026-02', '2026-03']);
+  // Jan: 17 days x 10 = 170; Feb: 9 days x 10 + 19 days x 6 = 204; Mar: 9 days x 6 = 54
+  assert.deepEqual(months.map((m) => m.interest), [170, 204, 54]);
+  assert.equal(months.reduce((s, m) => s + m.interest, 0), account.interestAccrued);
+  assert.deepEqual(months.map((m) => m.closingBalance), [10000, 6000, 6000]);
+  assert.equal(months[1].sales, 0);
+  assert.equal(months[1].payments, 4000);
+  assert.equal(months[2].totalDue, account.totalDue);
+});
+
+test('monthly breakdown follows the interest-free method too', () => {
+  const entries = [udhar('2026-01-01', 10000)];
+  const { months, account } = monthlyBreakdown(entries, { method: 'fifo', ratePerYear: 36.5, graceDays: 30, asOf: '2026-03-01' });
+  // 30 free days (01-01 to 30-01), then interest from 31-01: Jan 1 day, Feb 28 days
+  assert.deepEqual(months.map((m) => m.interest), [10, 280, 0]);
+  assert.equal(account.interestDue, 290);
 });
